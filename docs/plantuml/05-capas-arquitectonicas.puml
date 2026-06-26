@@ -1,0 +1,32 @@
+@startuml 05-capas-arquitectonicas
+title Spring PetClinic — Capas Arquitectonicas As-Is (A4)
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+rectangle "Capa de Presentacion" #E8F4FD {
+  component "Spring MVC Controllers\n+ Thymeleaf Views" as PRES
+}
+
+rectangle "Capa de Persistencia" #E8F5E9 {
+  component "Spring Data JPA\nRepositorios" as PERS
+}
+
+rectangle "Capa de Dominio" #FFF8E1 {
+  component "Entidades JPA\nOwner, Pet, Visit, Vet" as DOM
+}
+
+rectangle "Infraestructura transversal" #F3E5F5 {
+  component "Actuator, Cache,\ni18n, Validacion" as INFRA
+}
+
+PRES -down-> PERS : acceso directo\n(sin @Service)
+PERS -down-> DOM : ORM / JPA
+PRES -right-> INFRA : usa
+
+note bottom of PERS
+  Deuda arquitectonica:
+  no existe capa de servicios
+  entre presentacion y persistencia
+end note
+
+@enduml

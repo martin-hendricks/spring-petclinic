@@ -1,0 +1,55 @@
+@startuml 04-alcance-modernizacion
+title Spring PetClinic — Alcance de Modernizacion (Actividad 2)
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+skinparam component {
+  BackgroundColor<<modernizar>> #FFCDD2
+  BorderColor<<modernizar>> #C62828
+  BackgroundColor<<crear>> #C8E6C9
+  BorderColor<<crear>> #2E7D32
+  BackgroundColor<<mantener>> #BBDEFB
+  BorderColor<<mantener>> #1565C0
+  BackgroundColor<<evaluar>> #FFF9C4
+  BorderColor<<evaluar>> #F9A825
+}
+
+package "A MODERNIZAR" #FFEBEE {
+  component "OwnerController" <<modernizar>> as OC
+  component "PetController" <<modernizar>> as PC
+  component "VisitController" <<modernizar>> as VC
+  component "VetController" <<modernizar>> as VTC
+}
+
+package "A CREAR" #E8F5E9 {
+  component "Capa Service\nOwnerService, PetService\nVisitService, VetService" <<crear>> as SVC
+  component "API REST\n/api/vets, /api/owners" <<crear>> as API
+}
+
+package "MANTENER" #E3F2FD {
+  component "Repositorios JPA" <<mantener>> as REPO
+  component "Entidades / model" <<mantener>> as MODEL
+  component "system/\nWelcome, Cache, i18n" <<mantener>> as SYS
+}
+
+package "EVALUAR" #FFFDE7 {
+  component "CrashController\n(/oups)" <<evaluar>> as CC
+}
+
+OC --> SVC
+PC --> SVC
+VC --> SVC
+VTC --> SVC
+API --> SVC
+SVC --> REPO
+REPO --> MODEL
+
+legend right
+  |= Color |= Decision |
+  | <#FFCDD2> | Modernizar |
+  | <#C8E6C9> | Crear |
+  | <#BBDEFB> | Mantener |
+  | <#FFF9C4> | Evaluar |
+endlegend
+
+@enduml

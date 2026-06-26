@@ -1,0 +1,70 @@
+@startuml 03-modelo-dominio
+title Spring PetClinic — Modelo de Dominio JPA (A3, A4)
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+
+abstract class BaseEntity {
+  # id : Integer
+  + isNew() : boolean
+}
+
+abstract class Person {
+  # firstName : String
+  # lastName : String
+}
+
+abstract class NamedEntity {
+  # name : String
+}
+
+class Owner {
+  - address : String
+  - city : String
+  - telephone : String
+  + addPet(pet : Pet)
+  + addVisit(petId : int, visit : Visit)
+  + getPet(name : String) : Pet
+}
+
+class Pet {
+  - birthDate : LocalDate
+  + addVisit(visit : Visit)
+}
+
+class Visit {
+  - date : LocalDate
+  - description : String
+}
+
+class PetType {
+}
+
+class Vet {
+  + getSpecialties() : Set<Specialty>
+}
+
+class Specialty {
+}
+
+BaseEntity <|-- Person
+BaseEntity <|-- NamedEntity
+BaseEntity <|-- Visit
+
+Person <|-- Owner
+Person <|-- Vet
+
+NamedEntity <|-- Pet
+NamedEntity <|-- PetType
+NamedEntity <|-- Specialty
+
+Owner "1" *-- "0..*" Pet : pets
+Pet "1" *-- "0..*" Visit : visits
+Pet "0..*" --> "1" PetType : type
+Vet "0..*" -- "0..*" Specialty : specialties
+
+note bottom of Owner
+  Agregado raiz:
+  cascada JPA hacia Pet y Visit
+end note
+
+@enduml

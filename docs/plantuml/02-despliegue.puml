@@ -1,0 +1,34 @@
+@startuml 02-despliegue
+title Spring PetClinic — Diagrama de Despliegue (A2)
+skinparam shadowing false
+
+node "Cliente" as CLIENT <<device>> {
+  artifact "Navegador Web" as BROWSER
+}
+
+node "Servidor / Contenedor" as HOST <<execution environment>> {
+  artifact "spring-petclinic.jar\n(Spring Boot 4 · Java 17)" as JAR
+}
+
+cloud "Kubernetes (opcional)" as K8S {
+  node "Pod petclinic" as POD {
+    artifact "spring-petclinic.jar" as JAR_K8S
+  }
+}
+
+database "H2 embebida\n(perfil dev)" as H2
+database "MySQL 9.6\n(docker-compose)" as MYSQL
+database "PostgreSQL 18.3\n(docker-compose / K8s)" as PG
+
+BROWSER -down-> JAR : HTTP :8080
+JAR -down-> H2 : JDBC\nperfil h2
+JAR -down-> MYSQL : JDBC\nperfil mysql
+JAR -down-> PG : JDBC\nperfil postgres
+JAR_K8S -down-> PG : JDBC\nperfil postgres\n(via secret)
+
+note bottom of JAR
+  Build: ./mvnw spring-boot:build-image
+  Health: /livez, /readyz (Actuator)
+end note
+
+@enduml

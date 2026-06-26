@@ -1,0 +1,38 @@
+@startuml 01-componentes-as-is
+title Spring PetClinic — Componentes As-Is (A1)
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam defaultFontSize 12
+
+package "Presentacion\n(Spring MVC + Thymeleaf)" #E8F4FD {
+  component "WelcomeController\n(system/)" as WC
+  component "OwnerController\n(owner/)" as OC
+  component "PetController\n(owner/)" as PC
+  component "VisitController\n(owner/)" as VC
+  component "VetController\n(vet/)" as VTC
+}
+
+package "Dominio\n(Entidades JPA)" #FFF8E1 {
+  component "Modelo de Dominio\nOwner, Pet, Visit, Vet" as DOMAIN
+}
+
+package "Persistencia\n(Spring Data JPA)" #E8F5E9 {
+  component "Repositorios JPA\nOwnerRepository\nPetTypeRepository\nVetRepository" as REPO
+}
+
+database "Base de Datos\nH2 / MySQL / PostgreSQL" as DB #F3E5F5
+
+OC --> REPO : usa
+PC --> REPO : usa
+VC --> REPO : usa
+VTC --> REPO : usa
+REPO --> DOMAIN : persiste
+REPO --> DB : JDBC
+
+note right of OC
+  Sin capa @Service:
+  controladores acceden
+  directamente a repos
+end note
+
+@enduml
