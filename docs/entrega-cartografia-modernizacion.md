@@ -7,9 +7,19 @@
 | **Repositorio** | `spring-petclinic` |
 | **Stack legado (as-is)** | Java 17 · Spring Boot 4.0.3 · Spring MVC · Thymeleaf · JPA |
 | **Estrategia elegida** | Replatform + Rearchitect (Migration) |
-| **Herramientas de cartografía** | CodeScene + cartografía manual + PlantUML |
+| **Estado** | Iteración 1 ✅ · Iteración 2 ✅ |
 
 ---
+
+## Estado de iteraciones
+
+| Iteración | Objetivo | Estado |
+|-----------|----------|--------|
+| **1** | Validar arquitectura as-is contra código fuente | ✅ Completada |
+| **2** | Integrar evidencia CodeScene (M1–M4, degradación) | ✅ Completada |
+| 3 | Decidir estrategia con alternativas | Pendiente |
+| 4 | Acotar alcance realista | Pendiente |
+| 5 | Cierre documento + PNG | Pendiente |
 
 ## Tabla de contenidos
 
@@ -59,166 +69,300 @@ Se adopta una **estrategia híbrida** que combina análisis automático de calid
 
 ---
 
-## 1.3 Respuestas — Arquitectura
+## 1.3 Respuestas — Arquitectura (Iteración 1 — validado en código)
+
+> Cada afirmación incluye referencia al archivo fuente verificado en el repositorio.
 
 ### A1 — Componentes funcionales y relaciones
 
-Spring PetClinic es un **monolito Spring Boot** (~30 clases Java, ~1.931 LOC) organizado por paquetes de dominio:
+Spring PetClinic es un **monolito Spring Boot** empaquetado como JAR único:
 
-| Componente | Paquete | Responsabilidad |
-|------------|---------|-----------------|
-| Gestión de dueños | `owner/` — `OwnerController` | CRUD, búsqueda paginada, detalle con mascotas |
-| Gestión de mascotas | `owner/` — `PetController`, `PetValidator` | Alta/edición de pets |
-| Gestión de visitas | `owner/` — `VisitController` | Registro de visitas por mascota |
-| Listado de veterinarios | `vet/` — `VetController` | HTML paginado + JSON (`GET /vets`) |
-| Infraestructura web | `system/` | Welcome, i18n, caché, demo de errores |
-| Modelo compartido | `model/` | `BaseEntity`, `Person`, `NamedEntity` |
+| Métrica | Valor verificado |
+|---------|------------------|
+| Clases producción | 30 archivos `.java` |
+| LOC producción | 1.931 |
+| Controladores | 6 (`@Controller`) |
+| Repositorios | 3 interfaces Spring Data |
+| Entidades JPA | 8 (`@Entity`) |
+| Templates Thymeleaf | 12 |
 
-**Relaciones clave:**
-- No existe capa `@Service`: controladores → repositorios directamente.
-- Lógica de negocio en entidades (`Owner.addPet()`, `Owner.addVisit()`).
-- `Owner` es agregado raíz con cascada JPA hacia `Pet` y `Visit`.
+#### Inventario de endpoints HTTP
 
-**Evidencia:** `docs/plantuml/01-componentes-as-is.puml` (ver [Diagramas PlantUML](#diagramas-plantuml)).
+| Ruta | Método | Controller | Repositorio(s) | Vista / respuesta |
+|------|--------|------------|----------------|-------------------|
+| `/` | GET | `WelcomeController` | — | `welcome.html` |
+| `/owners/find` | GET | `OwnerController` | — | `owners/findOwners.html` |
+| `/owners` | GET | `OwnerController` | `OwnerRepository` | `ownersList.html` o redirect |
+| `/owners/new` | GET/POST | `OwnerController` | `OwnerRepository` | `createOrUpdateOwnerForm.html` |
+| `/owners/{id}` | GET | `OwnerController` | `OwnerRepository` | `ownerDetails.html` |
+| `/owners/{id}/edit` | GET/POST | `OwnerController` | `OwnerRepository` | formulario + redirect |
+| `/owners/{id}/pets/new` | GET/POST | `PetController` | `OwnerRepository`, `PetTypeRepository` | `createOrUpdatePetForm.html` |
+| `/owners/{id}/pets/{petId}/edit` | GET/POST | `PetController` | `OwnerRepository`, `PetTypeRepository` | formulario + redirect |
+| `/owners/{id}/pets/{petId}/visits/new` | GET/POST | `VisitController` | `OwnerRepository` | `createOrUpdateVisitForm.html` |
+| `/vets.html` | GET | `VetController` | `VetRepository` | `vets/vetList.html` (paginado) |
+| `/vets` | GET | `VetController` | `VetRepository` | JSON (`@ResponseBody Vets`) |
+| `/oups` | GET | `CrashController` | — | lanza excepción → `error.html` |
+
+#### Componentes por paquete
+
+| Paquete | Clases clave | Rol |
+|---------|--------------|-----|
+| `owner/` | 4 controllers, 4 entidades, 2 repos, `PetValidator`, `PetTypeFormatter` | Núcleo funcional (~62% LOC) |
+| `vet/` | `VetController`, `Vet`, `Specialty`, `Vets`, `VetRepository` | Consulta vets |
+| `model/` | `BaseEntity`, `Person`, `NamedEntity` | Herencia compartida |
+| `system/` | `WelcomeController`, `CrashController`, `CacheConfiguration`, `WebConfiguration` | Infra web |
+
+#### Relaciones verificadas
+
+1. **Sin capa `@Service`:** ningún `@Service` en `src/main/java`. Los 4 controllers de negocio inyectan repositorios en el constructor (p. ej. `OwnerController` L53–57).
+2. **Agregado Owner:** `Owner` persiste en cascada `Pet` y `Visit` vía `@OneToMany(cascade = ALL, fetch = EAGER)` (`Owner.java` L64–67; `Pet.java` L56–59).
+3. **PetController es el más acoplado:** depende de `OwnerRepository` + `PetTypeRepository` + `PetValidator` (`PetController.java` L52–58).
+4. **VisitController navega el agregado:** carga `Owner` → `Pet` → crea `Visit` → `owners.save(owner)` (`VisitController.java` L63–109).
+5. **Único endpoint REST:** `GET /vets` retorna JSON; todo lo demás es HTML (`VetController.java` L69–75).
+
+**Evidencia visual:** `docs/plantuml/01-componentes-as-is.puml`, `06-secuencia-buscar-owner.puml`, `07-secuencia-agregar-pet.puml`.
 
 ---
 
 ### A2 — Despliegue de componentes
 
-| Aspecto | Detalle |
-|---------|---------|
-| Empaquetado | JAR ejecutable Spring Boot (monolito) |
-| Build | Maven (primario) / Gradle; **Java 17** |
-| Contenedor | `./mvnw spring-boot:build-image` (Cloud Native Buildpacks) |
-| Orquestación | `k8s/petclinic.yml` — Deployment + Service NodePort |
-| BD desarrollo | H2 embebida (perfil por defecto) |
-| BD producción/demo | MySQL 9.6 / PostgreSQL 18.3 vía `docker-compose.yml` |
-| Observabilidad | Spring Boot Actuator (`/livez`, `/readyz`) |
-| CI/CD | GitHub Actions — Maven, Gradle, despliegue Kind |
+| Aspecto | Detalle verificado | Fuente |
+|---------|-------------------|--------|
+| Empaquetado | JAR ejecutable Spring Boot 4.0.3 | `pom.xml` L7–8 |
+| Java runtime | 17 (CI y build) | `pom.xml` L19; `maven-build.yml` L18 |
+| BD por defecto | H2 embebida, `database=h2` | `application.properties` L2–4 |
+| Perfil MySQL | `spring.profiles.active=mysql` | `application-mysql.properties` |
+| Perfil PostgreSQL | `spring.profiles.active=postgres` | `application-postgres.properties` |
+| Docker Compose | **Solo BD** (MySQL 9.6, PostgreSQL 18.3); la app no está en compose | `docker-compose.yml` |
+| Imagen contenedor | `./mvnw spring-boot:build-image` (Buildpacks) | README |
+| Kubernetes | Deployment 1 réplica, imagen `dsyer/petclinic`, perfil `postgres`, probes `/livez`/`/readyz` | `k8s/petclinic.yml` |
+| Actuator | Todos los endpoints expuestos en dev (`include=*`) | `application.properties` L21 |
+| CI | `./mvnw -B verify` en Java 17; workflow Gradle paralelo | `.github/workflows/` |
 
-**Evidencia:** `docs/plantuml/02-despliegue.puml`; archivos `docker-compose.yml`, `k8s/petclinic.yml`.
+**Corrección respecto al borrador anterior:** `docker-compose.yml` no despliega la aplicación; solo provisiona bases de datos. La app se ejecuta localmente o en K8s con perfil acorde.
+
+**Evidencia visual:** `docs/plantuml/02-despliegue.puml`.
 
 ---
 
 ### A3 — Relación con fuentes de datos
 
-Persistencia: **Spring Data JPA + Hibernate**. Esquema vía scripts SQL (`ddl-auto=none`).
+Configuración JPA verificada:
 
-| Repositorio | Entidades | Tablas |
-|-------------|-----------|--------|
-| `OwnerRepository` | Owner, Pet, Visit (cascada) | `owners`, `pets`, `visits` |
-| `PetTypeRepository` | PetType | `types` |
-| `VetRepository` | Vet, Specialty | `vets`, `specialties`, `vet_specialties` |
-
-**Modelo relacional:**
-
-```
-owners (1) ──< pets (N) ──< visits (N)
-                └──> types (N:1)
-vets (N) ──< vet_specialties >── specialties (N)
+```properties
+spring.jpa.hibernate.ddl-auto=none
+spring.jpa.open-in-view=false
+spring.jpa.hibernate.naming.physical-strategy=...SnakeCaseImpl
 ```
 
-**Evidencia:** `src/main/resources/db/h2/schema.sql`; `docs/plantuml/03-modelo-dominio.puml`.
+Esquema y datos inicializados por scripts SQL parametrizados: `classpath*:db/${database}/schema.sql` y `data.sql`.
+
+| Repositorio | Tipo Spring Data | Operaciones usadas | Tablas |
+|-------------|------------------|-------------------|--------|
+| `OwnerRepository` | `JpaRepository<Owner, Integer>` | `save`, `findById`, `findByLastNameStartingWith` | `owners`, `pets`, `visits` (cascada) |
+| `PetTypeRepository` | `JpaRepository<PetType, Integer>` | `findPetTypes()` con `@Query` JPQL | `types` |
+| `VetRepository` | `Repository<Vet, Integer>` (mínimo) | `findAll()`, `findAll(Pageable)` + `@Cacheable` | `vets`, `specialties`, `vet_specialties` |
+
+**Mapeo entidad ↔ tabla (verificado):**
+
+| Entidad | Tabla | Relación JPA |
+|---------|-------|--------------|
+| `Owner` | `owners` | `@OneToMany` → `Pet` (EAGER, cascade ALL) |
+| `Pet` | `pets` | `@ManyToOne` → `PetType`; `@OneToMany` → `Visit` |
+| `Visit` | `visits` | Columna `visit_date` mapeada a campo `date` |
+| `Vet` | `vets` | `@ManyToMany` → `Specialty` vía `vet_specialties` |
+
+**Evidencia:** `schema.sql`, entidades en `owner/` y `vet/`; diagrama `03-modelo-dominio.puml`.
 
 ---
 
 ### A4 — Patrones y tácticas arquitectónicas
 
-| Patrón / táctica | Implementación |
-|------------------|----------------|
-| MVC | `@Controller` + Thymeleaf |
-| Repository | Spring Data JPA (3 interfaces) |
-| Rich Domain Model | Agregado Owner → Pet → Visit |
-| Entity inheritance | BaseEntity → Person/NamedEntity → subclases |
-| Profile-based config | Perfiles `mysql`, `postgres` |
-| Cache-Aside | `@Cacheable("vets")` en VetRepository |
-| PRG | Flash attributes en formularios |
-| API híbrida | Thymeleaf + JSON parcial en `/vets` |
+| Patrón / táctica | Evidencia en código |
+|------------------|---------------------|
+| **Layered MVC** | 6 `@Controller` + 12 templates Thymeleaf |
+| **Repository** | 3 interfaces; `VetRepository` es interfaz mínima, no `JpaRepository` |
+| **Aggregate Root** | `Owner.addPet()`, `Owner.addVisit()`; persistencia vía `owners.save()` |
+| **Entity inheritance** | `BaseEntity` → `Person`/`NamedEntity` → subclases |
+| **Profile-based config** | Placeholder `${database}` en SQL init |
+| **Cache-Aside** | `@Cacheable("vets")` + `CacheConfiguration` crea cache JCache |
+| **PRG + Flash attributes** | Redirects post-POST en todos los formularios |
+| **Custom validation** | `PetValidator` registrado en `@InitBinder` de `PetController` |
+| **i18n** | `WebConfiguration` + 9 archivos `messages_*.properties`; `?lang=` |
+| **API híbrida** | Solo `/vets` es JSON; resto server-rendered |
 
-**Deuda arquitectónica:**
-- Sin capa de servicios (acoplamiento presentation ↔ persistence).
-- Responsabilidad concentrada en controladores del paquete `owner/`.
+**Deuda arquitectónica confirmada (no inferida):**
 
-**Evidencia:** `docs/plantuml/05-capas-arquitectonicas.puml`.
+| Hallazgo | Evidencia |
+|----------|-----------|
+| Sin capa de servicios | 0 clases `@Service` en producción |
+| Lógica de negocio en controllers | Validación duplicado/fecha en `PetController` L110–117; visita futura en `VisitController` L100 |
+| Fetch EAGER en agregados | `Owner.pets`, `Pet.visits`, `Vet.specialties` — riesgo N+1 mitigado parcialmente con `default_batch_fetch_size=16` |
+| `CrashController` expuesto | `GET /oups` lanza `RuntimeException` a propósito |
+
+**Evidencia visual:** `docs/plantuml/05-capas-arquitectonicas.puml`.
+
+**Evidencia CodeScene — Architectural Hotspots (configuración inicial):**
+
+Componentes definidos: `Presentation`, `Persistencia`, `Dominio`. La mayor parte del código aparece en **No Component** (hotspot rojo) porque los globs no matcheaban archivos individuales en paquetes mixtos (`owner/`, `vet/`). Code Health del sistema: **9.16 Healthy**.
+
+![Architectural Hotspots — capas sin mapear](codescene/11-architectural-hotspots.png)
+
+> **Acción pendiente:** reconfigurar patrones con prefijo `spring-petclinic/` y rutas explícitas por archivo (ver sección de configuración del equipo). Agregar componente `Infraestructura`. Tras re-análisis, esta vista debe reflejar el acoplamiento entre capas del diagrama A4.
 
 ---
 
-## 1.4 Respuestas — Mantenibilidad
+### Comparativa: documentación legacy vs. arquitectura actual
+
+| Aspecto | Slides legacy (pre–Spring Boot) | Código actual verificado |
+|---------|--------------------------------|--------------------------|
+| Framework | Spring MVC clásico, config XML/Java manual | Spring Boot 4 auto-configuración |
+| Empaquetado | WAR / despliegue en servlet container | JAR embebido (Tomcat incluido) |
+| Persistencia | iBatis / JDBC (en versiones antiguas) | Spring Data JPA + Hibernate |
+| BD | Configuración manual | Perfiles + scripts SQL multi-motor |
+| API | Solo HTML | HTML + `GET /vets` JSON |
+| Observabilidad | No documentada | Actuator completo en dev |
+| i18n | Limitado | 9 locales con interceptor |
+| Contenedores | No existía | build-image, K8s, docker-compose BD |
+
+Fuente legacy: [Speaker Deck](https://speakerdeck.com/michaelisvy/spring-petclinic-sample-application) — el README advierte que está desactualizado.
+
+---
+
+## 1.4 Respuestas — Mantenibilidad (Iteración 2 — CodeScene)
+
+> Análisis CodeScene del proyecto `spring-petclinic` · 12.381 LOC · 49 archivos · Java.
 
 ### M1 — Componentes más grandes (LOC)
 
-| LOC | Archivo | Paquete |
-|-----|---------|---------|
-| 183 | `PetController.java` | owner |
-| 176 | `OwnerController.java` | owner |
-| 176 | `Owner.java` | owner |
-| 114 | `VisitController.java` | owner |
-| 85 | `Pet.java` | owner |
-| 78 | `VetController.java` | vet |
+**Medición manual vs. CodeScene:**
 
-**Total producción:** ~1.931 LOC en 30 archivos. El paquete `owner/` concentra **~62%** del código.
+| LOC (repo) | LOC (CodeScene) | Archivo | Hotspot CodeScene |
+|------------|-----------------|---------|-------------------|
+| 183 | 124* | `PetController.java` | **Hotspot rojo** — alta actividad de cambios |
+| 176 | — | `OwnerController.java` | **Hotspot rojo** — el más activo del cluster |
+| 176 | 104 | `Owner.java` | No hotspot; Code Health **10/10** |
+| 114 | — | `VisitController.java` | Hotspot rojo |
+| 85 | — | `Pet.java` | Actividad moderada |
 
-> Completar con captura CodeScene: *Hotspots / File size ranking*.
+\* CodeScene mide LOC efectivas del archivo analizado (puede diferir del conteo bruto del repo).
+
+**Hotspots principales (pestaña 2):** `OwnerController`, `PetController`, `VisitController`, `OwnerControllerTests`, `ClinicServiceTests`.
+
+![Hotspots PetController](codescene/02-hotspots-petcontroller.png)
+
+![Hotspots OwnerController](codescene/03-hotspots-ownercontroller.png)
+
+**Conclusión M1:** el paquete `owner/` concentra los hotspots de cambio. Los controllers son más activos que las entidades (`Owner.java` tiene solo 3 commits/año).
 
 ---
 
 ### M2 — Componentes más acoplados
 
-| Origen | Depende de | Tipo |
-|--------|------------|------|
-| `PetController` | `OwnerRepository`, `PetTypeRepository`, `PetValidator` | Controller → múltiples repos |
-| `OwnerController` | `OwnerRepository` | Controller → repo + paginación |
-| `VisitController` | `OwnerRepository` | Navegación agregado Owner→Pet→Visit |
-| `VetController` | `VetRepository` | Controller → repo + JSON |
-| Entidades `owner/` | `model.Person`, `model.NamedEntity` | Herencia compartida |
+**Acoplamiento estructural (Iteración 1) + change coupling (CodeScene):**
 
-**Hotspot principal:** `PetController` (183 LOC).
+| Origen | Acoplado con | Evidencia CodeScene |
+|--------|--------------|---------------------|
+| `OwnerController` | `PetController`, `VisitController`, `OwnerControllerTests` | Líneas amarillas en mapa Hotspots |
+| `PetController` | `OwnerController`, `VisitController`, `VetController`, `Pet.java` | Hotspot map centrado en PetController |
+| `PetController` | `ClinicServiceTests`, `EntityUtils` | Coupling producción ↔ tests |
+| `OwnerController` | `OwnerControllerTests` | Test hotspot vinculado al controller |
 
-> Completar con captura CodeScene: *System Map*, *Coupling*, *Code Health*.
+**Code Health global del sistema: 9.77 (Healthy)** — el acoplamiento es temporal (cambian juntos), no necesariamente baja salud global.
+
+![Code Health sistema — change coupling visible](codescene/01-code-health-sistema.png)
+
+![Code Health OwnerController](codescene/04-code-health-ownercontroller.png)
+
+**Conclusión M2:** el acoplamiento más fuerte está en el triángulo `OwnerController` ↔ `PetController` ↔ `VisitController` y sus tests asociados.
 
 ---
 
 ### M3 — Código muerto, duplicado o mal ubicado
 
-| Hallazgo | Evidencia |
-|----------|-----------|
-| `CrashController` (`/oups`) | Demo que lanza excepción; no es negocio |
-| Paquete `service/` solo en tests | `ClinicServiceTests` — naming confuso |
-| Lógica en controladores | Binding, paginación, orquestación mezclados con UI |
-| Duplicación potencial | Patrones `@InitBinder` + `setAllowedFields` repetidos |
+| Hallazgo | Evidencia manual | Evidencia CodeScene |
+|----------|------------------|---------------------|
+| `CrashController` demo | `/oups` lanza excepción | No aparece como hotspot |
+| Lógica en controllers | Validaciones en `PetController` | X-Ray: métodos hotspot |
+| Duplicación estructural | `@InitBinder` repetido | X-Ray **no detecta clones** entre archivos |
+| Complejidad en métodos | — | `processCreationForm`: **Complex Conditional** (warning rojo) |
+| | | `processUpdateForm`: change freq. 22, complexity 7 |
 
-> Completar con captura CodeScene: *Dead code*, *Duplication*, *Complexity*.
+**X-Ray — `PetController.java`:**
+
+| Método | Change freq. | LOC | Complexity | Alerta |
+|--------|-------------|-----|------------|--------|
+| `processUpdateForm` | 22 | 26 | 7 | Hotspot principal |
+| `processCreationForm` | 19 | 21 | 7 | **Complex Conditional** |
+| `findOwner` | 6 | — | 2 | OK |
+| `initCreationForm` | 1 | — | 1 | OK |
+
+![X-Ray PetController](codescene/09-xray-petcontroller.png)
+
+**Conclusión M3:** no hay duplicación explícita (clones) reportada, pero sí **lógica compleja duplicada en espíritu** entre `processCreationForm` y `processUpdateForm` (validación duplicado/fecha). Refactoring target natural: extraer validaciones a servicio o componente compartido.
 
 ---
 
-### M4 — Cobertura de pruebas
+### M4 — Cobertura y contexto del equipo
 
 | Métrica | Valor |
 |---------|-------|
-| Archivos test / producción | 17 / 30 |
-| Ratio | 0.57:1 |
+| Archivos test / producción (repo) | 17 / 30 |
+| LOC CodeScene | 12.381 |
+| Archivos analizados | 49 |
+| Code Familiarity | **100%** (código de developers activos) |
+| Knowledge Islands | **5%** (2 archivos) |
+| Bus factor | **67%** del código en **4 developers** |
+| Coordinación alta | **17 archivos** requieren alta coordinación |
 
-Tests: MockMvc (controladores), `@DataJpaTest`, Testcontainers (MySQL/PostgreSQL), i18n sync, JMeter.
+![Knowledge Distribution](codescene/10-knowledge-distribution.png)
 
-> Completar con captura CodeScene si aplica.
+**Tests como hotspots:** `OwnerControllerTests` y `ClinicServiceTests` aparecen como hotspots — indican alta actividad de mantenimiento de tests, no baja cobertura.
+
+**Technical Debt Friction:** CodeScene reporta *"Insufficient commit history"* — el análisis de fricción de deuda está limitado en este fork/clon.
+
+![Technical Debt Friction](codescene/07-technical-debt-friction.png)
+
+**Refactoring Targets:** sistema **9.77 Healthy**; oportunidades locales en amarillo. Aviso: componentes arquitectónicos no definidos en CodeScene.
+
+![Refactoring Targets](codescene/08-refactoring-targets.png)
 
 ---
 
-## 1.5 Atributos de calidad degradados
+## 1.5 Atributos de calidad degradados (Iteración 2 — con métricas CodeScene)
 
-**Respuesta: Sí**, en los siguientes atributos:
+**Respuesta: Sí, de forma focalizada** — el sistema global es saludable pero hay degradación localizada en áreas de alto cambio.
 
-| Atributo | ¿Degradado? | Evidencia |
-|----------|-------------|-----------|
-| **Mantenibilidad** | **Sí** | Hotspots en `owner/`; controladores >170 LOC; sin capa Service |
-| **Modificabilidad** | **Sí (moderado)** | Nuevas reglas requieren tocar controladores |
-| **Testabilidad** | **Parcial** | MockMvc existe; difícil test unitario puro de reglas |
-| **Seguridad** | **Sí (por omisión)** | Sin autenticación/autorización |
-| Rendimiento | No evidenciado | Caché vets; OSIV=false |
-| Usabilidad | No degradado | Bootstrap 5, i18n (10 idiomas) |
-| Portabilidad | No degradado | Multi-BD, K8s, GraalVM hints |
+| Atributo | ¿Degradado? | Evidencia CodeScene + código |
+|----------|-------------|------------------------------|
+| **Mantenibilidad** | **Sí (localizada)** | Hotspots en controllers `owner/`; X-Ray: `processCreationForm` con **Complex Conditional**; `processUpdateForm` change freq. 22 |
+| **Modificabilidad** | **Sí (moderado)** | Change coupling entre 3 controllers; 17 archivos con alta coordinación |
+| **Testabilidad** | **No degradada** | Tests son hotspots activos (`OwnerControllerTests`); Code Health tests en verde |
+| **Conocimiento / Bus factor** | **Riesgo bajo** | Code Familiarity 100%; 2 knowledge islands; bus factor 67% en 4 devs |
+| **Deuda técnica (fricción)** | **No evaluable** | Insufficient commit history en CodeScene |
+| **Seguridad** | **Sí (por omisión)** | No detectable en CodeScene; sin auth en código |
+| **Rendimiento** | **No evidenciado** | — |
+| **Usabilidad** | **No degradado** | — |
+| **Portabilidad** | **No degradado** | Code Health global **9.77** |
 
-**Prioridad de modernización:** mantenibilidad y modificabilidad → motivan la introducción de capa de servicios y migración de plataforma.
+### Paradoja clave para la modernización
+
+> El **Code Health global es 9.77 (Healthy)** y el paquete `owner/` score **9.89**, pero los **controllers son hotspots rojos** con change coupling fuerte. La degradación no es "código roto" sino **alto costo de cambio futuro** en el módulo más activo.
+
+### Tabla consolidada Code Health por archivo
+
+| Archivo | LOC (CS) | Code Health | Hotspot | Refactoring target |
+|---------|----------|-------------|---------|-------------------|
+| `PetController.java` | 124 | **9/10** | Sí (rojo) | `processCreationForm`, `processUpdateForm` |
+| `OwnerController.java` | — | **Healthy** (verde) | Sí (rojo, el mayor) | Extraer paginación/CRUD |
+| `Owner.java` | 104 | **10/10** | No | Mantener |
+| Paquete `owner/` | — | **9.89** | Concentración | Introducir capa Service |
+
+![Code Health paquete owner](codescene/05-code-health-paquete-owner.png)
+
+![Code Health Owner.java](codescene/06-code-health-owner-java.png)
+
+**Prioridad de modernización:** extraer lógica de `PetController` y `OwnerController` a capa `@Service` — coincide con Refactoring Targets locales (amarillo) y X-Ray hotspots.
 
 ---
 
@@ -259,8 +403,8 @@ Tests: MockMvc (controladores), `@DataJpaTest`, Testcontainers (MySQL/PostgreSQL
 
 | Componente | Decisión | Justificación |
 |------------|----------|---------------|
-| `owner/*` controllers | **Modernizar** | 62% LOC; hotspots M1/M2 |
-| Capa `@Service` | **Crear** | Elimina acoplamiento controller→repo |
+| `owner/*` controllers | **Modernizar** | Hotspots rojos (CodeScene); X-Ray complexity en `PetController` |
+| Capa `@Service` | **Crear** | Refactoring Targets locales; reduce change coupling entre controllers |
 | `VetController` + REST | **Modernizar** | Base para API completa |
 | Repositorios + entidades | **Mantener** | Estables, bien modelados |
 | `system/` (welcome, cache, i18n) | **Mantener** | Sin deuda crítica |
@@ -295,7 +439,9 @@ Los diagramas están en `docs/plantuml/` como archivos `.puml` (texto plano, ver
 | 02 | `02-despliegue.puml` | Navegador, JVM, JAR, H2/MySQL/PostgreSQL, K8s | A2 |
 | 03 | `03-modelo-dominio.puml` | Clases JPA, herencia, asociaciones | A3, A4 |
 | 04 | `04-alcance-modernizacion.puml` | Qué modernizar, crear y mantener | Actividad 2 |
-| 05 | `05-capas-arquitectonicas.puml` | Presentación → Persistencia → Dominio (sin Service) | A4 |
+| 05 | `05-capas-arquitectonicas.puml` | Capas + deuda confirmada | A4 |
+| 06 | `06-secuencia-buscar-owner.puml` | Flujo búsqueda owner | A1 |
+| 07 | `07-secuencia-agregar-pet.puml` | Flujo agregar mascota | A1 |
 
 ## Visualizar y exportar PNG
 
@@ -323,23 +469,40 @@ Insertar los PNG de `docs/plantuml/export/` en el informe Word/PDF final.
 | Exploración del repositorio | Análisis de estructura, LOC, patrones | Cursor Agent |
 | Generación diagramas PlantUML | Archivos `.puml` de arquitectura | Cursor Agent |
 | Redacción del documento | Borrador según rúbrica del curso | Cursor Agent |
-| Métricas de mantenibilidad | Validación humana con CodeScene | Equipo |
+| Métricas de mantenibilidad | Capturas CodeScene integradas por el equipo | CodeScene + Cursor |
 | Decisiones de alcance | Revisión y aprobación del equipo | Equipo |
 
 **Declaración:** IAG se usa como asistente de análisis y documentación. Las métricas cuantitativas provienen de CodeScene. Las decisiones de modernización son responsabilidad del equipo.
 
 ---
 
-# Anexos CodeScene
+# Anexos CodeScene (Iteración 2 — completos)
 
-Insertar capturas en las secciones correspondientes:
+Todas las capturas en `docs/codescene/`:
 
-- [ ] **System Map** — dependencias entre módulos → M2
-- [ ] **Hotspots** — top 10 archivos → M1
-- [ ] **Code Health** — `PetController`, `OwnerController`, `Owner.java` → 1.5
-- [ ] **Coupling / Change coupling** → M2
-- [ ] **Duplicación** → M3
-- [ ] **Trend / Evolution** (opcional)
+| Archivo | Vista | Sección |
+|---------|-------|---------|
+| `01-code-health-sistema.png` | Code Health — mapa sistema (9.77) | M2, 1.5 |
+| `02-hotspots-petcontroller.png` | Hotspots — PetController | M1 |
+| `03-hotspots-ownercontroller.png` | Hotspots — OwnerController | M1 |
+| `04-code-health-ownercontroller.png` | Code Health — OwnerController | M2 |
+| `05-code-health-paquete-owner.png` | Code Health — paquete owner (9.89) | 1.5 |
+| `06-code-health-owner-java.png` | Code Health — Owner.java (10/10) | 1.5 |
+| `07-technical-debt-friction.png` | Technical Debt Friction | M4 |
+| `08-refactoring-targets.png` | Refactoring Targets | M4, Act. 2 |
+| `09-xray-petcontroller.png` | X-Ray — PetController hotspots | M3 |
+| `10-knowledge-distribution.png` | Knowledge Distribution | M4 |
+| `11-architectural-hotspots.png` | Architectural Hotspots — capas (config. inicial) | A4 |
+
+- [x] System Map / Code Health global
+- [x] Hotspots — controllers owner
+- [x] Code Health — OwnerController, Owner.java, paquete owner
+- [x] Change coupling (visible en mapas 01, 02, 03, 04)
+- [x] X-Ray / complejidad — PetController (sin clones explícitos)
+- [x] Knowledge Distribution
+- [x] Architectural Hotspots — configuración inicial de capas (parcial; ver A4)
+- [ ] Architectural Hotspots — capas mapeadas correctamente (pendiente re-análisis)
+- [ ] Trend / Evolution (opcional — no capturado)
 
 ---
 
@@ -353,3 +516,4 @@ Insertar capturas en las secciones correspondientes:
 | Docker Compose | `docker-compose.yml` |
 | Build / versión Java | `pom.xml` (java.version=17, Spring Boot 4.0.3) |
 | Diagramas PlantUML | `docs/plantuml/*.puml` |
+| Capturas CodeScene | `docs/codescene/*.png` |
