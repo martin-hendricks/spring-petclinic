@@ -1,34 +1,50 @@
 @startuml 02-despliegue
-title Spring PetClinic — Diagrama de Despliegue (A2)
+title Spring PetClinic — Despliegue (A2) [Iteracion 1]
 skinparam shadowing false
 
+actor "Usuario" as USER
+
 node "Cliente" as CLIENT <<device>> {
-  artifact "Navegador Web" as BROWSER
+  artifact "Navegador" as BROWSER
 }
 
-node "Servidor / Contenedor" as HOST <<execution environment>> {
-  artifact "spring-petclinic.jar\n(Spring Boot 4 · Java 17)" as JAR
+node "Runtime local / servidor" as HOST <<execution environment>> {
+  artifact "spring-petclinic.jar\nSpring Boot 4.0.3 · Java 17" as JAR
+  artifact "Actuator\n/livez /readyz / *" as ACT
+}
+
+node "CI GitHub Actions" as CI <<execution environment>> {
+  artifact "mvnw verify\nJava 17 matrix" as BUILD
 }
 
 cloud "Kubernetes (opcional)" as K8S {
   node "Pod petclinic" as POD {
-    artifact "spring-petclinic.jar" as JAR_K8S
+    artifact "dsyer/petclinic\nperfil postgres" as IMG
   }
+  database "PostgreSQL\nsecret demo-db" as PGK8S
 }
 
-database "H2 embebida\n(perfil dev)" as H2
+database "H2 embebida\n(database=h2 default)" as H2
 database "MySQL 9.6\n(docker-compose)" as MYSQL
-database "PostgreSQL 18.3\n(docker-compose / K8s)" as PG
+database "PostgreSQL 18.3\n(docker-compose)" as PG
 
-BROWSER -down-> JAR : HTTP :8080
-JAR -down-> H2 : JDBC\nperfil h2
-JAR -down-> MYSQL : JDBC\nperfil mysql
-JAR -down-> PG : JDBC\nperfil postgres
-JAR_K8S -down-> PG : JDBC\nperfil postgres\n(via secret)
+USER --> BROWSER
+BROWSER --> JAR : HTTP :8080\nThymeleaf + /vets JSON
+JAR --> H2 : JDBC\nperfil default
+JAR --> MYSQL : JDBC\nperfil mysql
+JAR --> PG : JDBC\nperfil postgres
+JAR --> ACT
+BUILD ..> JAR : spring-boot:build-image\n(Cloud Native Buildpacks)
+IMG --> PGK8S : JDBC + volume\n/service-binding
 
-note bottom of JAR
-  Build: ./mvnw spring-boot:build-image
-  Health: /livez, /readyz (Actuator)
+note bottom of HOST
+  docker-compose.yml solo levanta BD;
+  la app corre aparte con perfil mysql/postgres
+end note
+
+note bottom of CI
+  .github/workflows/maven-build.yml
+  .github/workflows/gradle-build.yml
 end note
 
 @enduml

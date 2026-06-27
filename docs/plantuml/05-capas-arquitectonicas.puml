@@ -1,32 +1,46 @@
 @startuml 05-capas-arquitectonicas
-title Spring PetClinic — Capas Arquitectonicas As-Is (A4)
+title Spring PetClinic — Capas As-Is (A4) [Iteracion 1]
 skinparam componentStyle rectangle
 skinparam shadowing false
 
-rectangle "Capa de Presentacion" #E8F4FD {
-  component "Spring MVC Controllers\n+ Thymeleaf Views" as PRES
+rectangle "Presentacion" #E8F4FD {
+  component "6 Controllers\n+ Thymeleaf (12 templates)" as PRES
+  component "PetValidator\nPetTypeFormatter" as HELPERS
 }
 
-rectangle "Capa de Persistencia" #E8F5E9 {
-  component "Spring Data JPA\nRepositorios" as PERS
+rectangle "Persistencia" #E8F5E9 {
+  component "OwnerRepository\n(JpaRepository)" as OR
+  component "PetTypeRepository\n(JpaRepository)" as PTR
+  component "VetRepository\n(Repository minimo\n+ @Cacheable)" as VR
 }
 
-rectangle "Capa de Dominio" #FFF8E1 {
-  component "Entidades JPA\nOwner, Pet, Visit, Vet" as DOM
+rectangle "Dominio" #FFF8E1 {
+  component "Entidades JPA\n8 @Entity" as DOM
 }
 
-rectangle "Infraestructura transversal" #F3E5F5 {
-  component "Actuator, Cache,\ni18n, Validacion" as INFRA
+rectangle "Infraestructura" #F3E5F5 {
+  component "CacheConfiguration\nWebConfiguration\nActuator" as INFRA
 }
 
-PRES -down-> PERS : acceso directo\n(sin @Service)
-PERS -down-> DOM : ORM / JPA
-PRES -right-> INFRA : usa
+PRES -down-> OR : OwnerController\nPetController\nVisitController
+PRES -down-> PTR : PetController\n(findPetTypes)
+PRES -down-> VR : VetController
+PRES -right-> HELPERS
+PRES -right-> INFRA : i18n, cache
+OR -down-> DOM
+PTR -down-> DOM
+VR -down-> DOM
 
-note bottom of PERS
-  Deuda arquitectonica:
-  no existe capa de servicios
-  entre presentacion y persistencia
+note bottom of PRES
+  **Capa @Service ausente**
+  VisitController persiste visitas
+  via owners.save(owner) cascada
+end note
+
+note bottom of DOM
+  Fetch EAGER en Owner.pets,
+  Pet.visits, Vet.specialties
+  (implicacion rendimiento)
 end note
 
 @enduml

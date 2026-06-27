@@ -1,0 +1,29 @@
+@startuml 06-secuencia-buscar-owner
+title Flujo verificado — Buscar owner por apellido (A1)
+skinparam shadowing false
+
+actor Usuario
+participant "OwnerController" as OC
+participant "OwnerRepository" as OR
+database "owners (+ pets EAGER)" as DB
+
+Usuario -> OC : GET /owners/find
+OC --> Usuario : findOwners.html
+
+Usuario -> OC : GET /owners?lastName=Franklin&page=1
+OC -> OR : findByLastNameStartingWith(lastName, pageable)
+note right of OR
+  Page size = 5
+  (OwnerController L131)
+end note
+OR -> DB : SELECT owners...
+DB --> OR : Page<Owner>
+alt 0 resultados
+  OC --> Usuario : findOwners.html + error
+else 1 resultado
+  OC --> Usuario : redirect /owners/{id}
+else N resultados
+  OC --> Usuario : ownersList.html paginado
+end
+
+@enduml

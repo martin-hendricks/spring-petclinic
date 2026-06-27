@@ -1,0 +1,35 @@
+@startuml 07-secuencia-agregar-pet
+title Flujo verificado — Agregar mascota a owner (A1)
+skinparam shadowing false
+
+actor Usuario
+participant "PetController" as PC
+participant "PetValidator" as PV
+participant "PetTypeRepository" as PTR
+participant "OwnerRepository" as OR
+participant "Owner\n(agregado)" as Owner
+database "owners, pets, types" as DB
+
+Usuario -> PC : GET /owners/{ownerId}/pets/new
+PC -> OR : findById(ownerId)
+OR -> DB : SELECT owner + pets EAGER
+DB --> OR : Owner
+PC -> PTR : findPetTypes()
+PTR -> DB : SELECT types ORDER BY name
+PC --> Usuario : createOrUpdatePetForm.html
+
+Usuario -> PC : POST /owners/{ownerId}/pets/new
+PC -> PV : validate(pet)
+PC -> Owner : addPet(pet)\n+ reglas duplicado/fecha
+PC -> OR : save(owner)
+OR -> DB : INSERT/UPDATE cascada\npets
+PC --> Usuario : redirect /owners/{ownerId}
+
+note right of PC
+  Reglas en controller:
+  nombre duplicado (L110)
+  birthDate futura (L115)
+  Sin @Service intermedio
+end note
+
+@enduml

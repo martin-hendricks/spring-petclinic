@@ -1,38 +1,62 @@
 @startuml 01-componentes-as-is
-title Spring PetClinic — Componentes As-Is (A1)
+title Spring PetClinic — Componentes As-Is (A1) [Iteracion 1]
 skinparam componentStyle rectangle
 skinparam shadowing false
-skinparam defaultFontSize 12
 
 package "Presentacion\n(Spring MVC + Thymeleaf)" #E8F4FD {
-  component "WelcomeController\n(system/)" as WC
-  component "OwnerController\n(owner/)" as OC
-  component "PetController\n(owner/)" as PC
-  component "VisitController\n(owner/)" as VC
-  component "VetController\n(vet/)" as VTC
+  component "WelcomeController\nGET /" as WC
+  component "OwnerController\n/owners/**" as OC
+  component "PetController\n/owners/{id}/pets/**" as PC
+  component "VisitController\n.../visits/new" as VC
+  component "VetController\n/vets.html, /vets" as VTC
+  component "CrashController\nGET /oups" as CC #FFF9C4
+  component "PetValidator\nPetTypeFormatter" as VAL
+}
+
+package "Configuracion\n(system/)" #F3E5F5 {
+  component "WebConfiguration\n(i18n ?lang=)" as I18N
+  component "CacheConfiguration\n(JCache vets)" as CACHE
 }
 
 package "Dominio\n(Entidades JPA)" #FFF8E1 {
-  component "Modelo de Dominio\nOwner, Pet, Visit, Vet" as DOMAIN
+  component "Agregado Owner\n+ Pet + Visit" as AGG_OWNER
+  component "Vet + Specialty" as AGG_VET
+  component "model/\nBaseEntity, Person..." as MODEL
 }
 
 package "Persistencia\n(Spring Data JPA)" #E8F5E9 {
-  component "Repositorios JPA\nOwnerRepository\nPetTypeRepository\nVetRepository" as REPO
+  component "OwnerRepository" as OR
+  component "PetTypeRepository" as PTR
+  component "VetRepository\n@Cacheable" as VR
 }
 
-database "Base de Datos\nH2 / MySQL / PostgreSQL" as DB #F3E5F5
+database "BD relacional\n7 tablas" as DB
 
-OC --> REPO : usa
-PC --> REPO : usa
-VC --> REPO : usa
-VTC --> REPO : usa
-REPO --> DOMAIN : persiste
-REPO --> DB : JDBC
+OC --> OR
+PC --> OR
+PC --> PTR
+PC ..> VAL : valida/convierte
+VC --> OR
+VTC --> VR
+OR --> AGG_OWNER : persiste cascada
+PTR --> AGG_OWNER
+VR --> AGG_VET
+AGG_OWNER --> MODEL : hereda
+AGG_VET --> MODEL : hereda
+OR --> DB
+PTR --> DB
+VR --> DB
+VTC ..> CACHE : usa cache vets
+WC ..> I18N
 
-note right of OC
-  Sin capa @Service:
-  controladores acceden
-  directamente a repos
+note right of PC
+  Unico controller con
+  2 repositorios + validador
+end note
+
+note bottom of CC
+  Demo de errores;
+  no es negocio
 end note
 
 @enduml
