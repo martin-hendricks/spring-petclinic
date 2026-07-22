@@ -10,7 +10,7 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 | 0 | Preparación: contexto, baseline y rama | ✅ Completa | 2026-07-21 |
 | 1 | Replatform Java 17 → 21 | ✅ Completa | 2026-07-21 |
 | 2 | F-03 — Capa `@Service` (Pets & Visits) | ✅ Completa | 2026-07-21 |
-| 3 | F-05 — API REST Owners | ⬜ Pendiente | — |
+| 3 | F-05 — API REST Owners | ✅ Completa | 2026-07-21 |
 | 4 | Diagramas secuencia/clases to-be | ⬜ Pendiente | — |
 | 5 | Contenedores | ⬜ Pendiente | — |
 | 6 | Terraform sobre AWS | ⬜ Pendiente | — |
@@ -98,13 +98,29 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 - [x] Dependencia añadida a `pom.xml` y `build.gradle`. `./mvnw verify` en verde (54 tests, 0
       fallos). App levantada manualmente: `GET /v3/api-docs` → 200 con contrato OpenAPI válido, y
       `GET /owners` / `GET /vets` (Thymeleaf) siguen respondiendo 200 sin regresión.
-- [ ] `OwnerDto` / `PetDto` (records)
-- [ ] `OwnerMapper`
-- [ ] `OwnerService` (`findById`, `findByLastName` paginado)
-- [ ] `OwnerRestController` (`GET /api/owners`, `GET /api/owners/{id}`) + `@RestControllerAdvice`
-- [ ] Documentación OpenAPI (`@Operation`, `@ApiResponse`)
-- [ ] `OwnerRestControllerTests` (`@WebMvcTest`)
-- [ ] Confirmar que `OwnerController` (MVC) sigue intacto y las vistas Thymeleaf no tienen regresión
+- [x] `OwnerDto` / `PetDto` (records, con anotaciones `@Schema` de OpenAPI)
+- [x] `OwnerMapper` (solo lectura: `Owner`→`OwnerDto`, `Pet`→`PetDto`; `type` se aplana al nombre
+      del `PetType` como `String`)
+- [x] `OwnerService` (`findById`, `findByLastName` paginado, `@Transactional(readOnly = true)`;
+      `findById` lanza `OwnerNotFoundException` si no existe; `findByLastName` reproduce la regla
+      de `OwnerController.processFindForm` de tratar `lastName == null` como búsqueda amplia)
+- [x] `OwnerRestController` (`GET /api/owners` con `page`/`size`/`lastName` opcional, `GET
+      /api/owners/{id}`) + `OwnerRestExceptionHandler` (`@RestControllerAdvice(assignableTypes =
+      OwnerRestController.class)`, acotado a este controller para no interferir con nada más)
+      traduce `OwnerNotFoundException` a 404 vía `ProblemDetail` — sin try/catch en el controller
+- [x] Documentación OpenAPI (`@Tag`, `@Operation`, `@ApiResponse`, `@Parameter`, `@Schema`)
+- [x] `OwnerRestControllerTests` (`@WebMvcTest` + `@Import(OwnerService.class)`, 5 tests): 200 con
+      campos de `OwnerDto`, 404 en owner inexistente, filtro por `lastName`, listado paginado sin
+      filtro, y verificación explícita de que la respuesta **no** expone campos internos de la
+      entidad JPA (`new` de `BaseEntity`, `visits` de `Pet`)
+- [x] Verificado en caliente (app levantada con `spring-boot:run`): `GET /api/owners/1` → 200 JSON;
+      `GET /api/owners/9999` → 404; `GET /api/owners?lastName=Franklin` → 200 filtrado; `GET
+      /api/owners` → 200 paginado (`totalElements=10, size=5`); `GET /swagger-ui.html` → 200;
+      `GET /owners/1` y `GET /owners` (Thymeleaf) → 200 sin regresión.
+- [x] `OwnerController` (MVC), `Owner`/`Pet`/`Visit`/`PetType`, `OwnerRepository` y templates:
+      **sin tocar**.
+- [x] `./mvnw verify` en verde: **59 tests, 0 fallos** (54 previos + 5 nuevos).
+- [x] Commit de cierre de Fase 3.
 
 ## Fase 4 — Diagramas to-be
 
