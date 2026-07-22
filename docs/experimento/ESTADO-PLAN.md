@@ -8,7 +8,7 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 | Fase | Objetivo | Estado | Última actualización |
 |---|---|---|---|
 | 0 | Preparación: contexto, baseline y rama | ✅ Completa | 2026-07-21 |
-| 1 | Replatform Java 17 → 21 | ⬜ Pendiente | — |
+| 1 | Replatform Java 17 → 21 | ✅ Completa | 2026-07-21 |
 | 2 | F-03 — Capa `@Service` (Pets & Visits) | ⬜ Pendiente | — |
 | 3 | F-05 — API REST Owners | ⬜ Pendiente | — |
 | 4 | Diagramas secuencia/clases to-be | ⬜ Pendiente | — |
@@ -33,11 +33,19 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 
 ## Fase 1 — Java 21
 
-- [ ] `pom.xml`: `<java.version>` 17 → 21
-- [ ] `build.gradle`: toolchain → 21
-- [ ] Revisar `maven-enforcer-plugin` (`requireJavaVersion`)
-- [ ] `./mvnw verify` en verde con Java 21
-- [ ] Instalar JDK 21 en el entorno (no está instalado; se instalará vía `sdkman` al ejecutar esta fase)
+- [x] `pom.xml`: `<java.version>` 17 → 21
+- [x] `build.gradle`: toolchain → 21
+- [x] Revisado `maven-enforcer-plugin` (`requireJavaVersion`): usa `${java.version}`, no necesitó
+      cambio propio, solo heredó el nuevo valor de la propiedad.
+- [x] `./mvnw verify` en verde con Java 21 (Temurin 21.0.11, instalado vía `sdkman`): 47 tests,
+      0 fallos, `BUILD SUCCESS` en 1m19s — mismo resultado que la línea base en Java 17.
+- [x] No se tocó código fuente ni se usaron features de Java 21 (records/pattern matching/virtual
+      threads), tal como pide el alcance estricto de esta fase.
+- [ ] Nota: `.github/workflows/gradle-build.yml` y `.github/workflows/maven-build.yml` siguen
+      referenciando Java 17. **No se tocaron** porque cualquier pipeline de CI/CD está fuera de
+      alcance del experimento (ver `CLAUDE.md`, sección "FUERA de alcance"). Se deja registrado
+      como desviación conocida, no como pendiente a resolver dentro de este plan.
+- [x] Commit de cierre de Fase 1.
 
 ## Fase 2 — F-03 (Service Pets & Visits)
 
@@ -101,3 +109,6 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
    ejecución de esta sesión.
 2. **Rama existente `feature/modernizado`** se usa en vez de crear `feature/experimento-modernizacion`
    como sugiere el §0.1 del plan, para no fragmentar el historial ya commiteado en esta rama.
+3. **CI/CD sin actualizar a Java 21.** `.github/workflows/*.yml` quedan en Java 17 porque tocar
+   pipelines de CI/CD está explícitamente fuera de alcance (`CLAUDE.md`). Si se ejecutan, fallarán
+   al compilar con `java.version=21`; es un efecto esperado de la decisión de alcance, no un bug.
