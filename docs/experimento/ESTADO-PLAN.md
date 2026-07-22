@@ -89,8 +89,15 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 
 ## Fase 3 — F-05 (API REST Owners)
 
-- [ ] Punto de control: versión de `springdoc-openapi` compatible con Spring Boot 4.0.3 / Spring
-      Framework 7 — **pendiente de verificación y confirmación antes de fijar versión**
+- [x] Punto de control resuelto: la búsqueda web inicial devolvió versiones/fechas fabricadas
+      (mencionaba Spring Boot 4 en 2024, imposible). Se descartó esa fuente y se verificó
+      directamente contra Maven Central (`repo1.maven.org/.../maven-metadata.xml` + los `.pom` de
+      cada candidata). Resultado: `springdoc-openapi-starter-webmvc-ui:3.0.2` tiene como parent
+      `spring-boot-starter-parent:4.0.3` — match exacto con este proyecto (`3.0.3` usa `4.0.5`).
+      Usuario aprobó `3.0.2`.
+- [x] Dependencia añadida a `pom.xml` y `build.gradle`. `./mvnw verify` en verde (54 tests, 0
+      fallos). App levantada manualmente: `GET /v3/api-docs` → 200 con contrato OpenAPI válido, y
+      `GET /owners` / `GET /vets` (Thymeleaf) siguen respondiendo 200 sin regresión.
 - [ ] `OwnerDto` / `PetDto` (records)
 - [ ] `OwnerMapper`
 - [ ] `OwnerService` (`findById`, `findByLastName` paginado)
