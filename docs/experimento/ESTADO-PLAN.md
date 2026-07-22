@@ -9,7 +9,7 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 |---|---|---|---|
 | 0 | Preparación: contexto, baseline y rama | ✅ Completa | 2026-07-21 |
 | 1 | Replatform Java 17 → 21 | ✅ Completa | 2026-07-21 |
-| 2 | F-03 — Capa `@Service` (Pets & Visits) | ⬜ Pendiente | — |
+| 2 | F-03 — Capa `@Service` (Pets & Visits) | ✅ Completa | 2026-07-21 |
 | 3 | F-05 — API REST Owners | ⬜ Pendiente | — |
 | 4 | Diagramas secuencia/clases to-be | ⬜ Pendiente | — |
 | 5 | Contenedores | ⬜ Pendiente | — |
@@ -49,14 +49,43 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 
 ## Fase 2 — F-03 (Service Pets & Visits)
 
-- [ ] Punto de control: propuesta de manejo de errores de validación (excepciones de dominio vs.
-      objeto de errores) — **pendiente de aprobación del usuario antes de escribir código**
-- [ ] `PetService` (`createPet`, `updatePet`, validaciones)
-- [ ] `VisitService` (`createVisit`, validación de fecha futura)
-- [ ] Refactor `PetController` / `VisitController` a orquestación pura
-- [ ] `PetController.java` < 100 LOC (hoy: 183)
-- [ ] `PetServiceTests`, `VisitServiceTests` con Mockito
-- [ ] `./mvnw verify` en verde sin tocar aserciones existentes
+- [x] Punto de control resuelto: propuse dos opciones (excepción de dominio con lista de
+      violaciones vs. objeto de resultado). El usuario aprobó la **Opción A** (excepción de
+      dominio `ValidationException` + `FieldViolation`, con el controller comprobando
+      `result.hasErrors()` de Bean Validation antes de persistir).
+- [x] `PetService` (`createPet`, `updatePet`, `validateDuplicateName`, `validateBirthDate`,
+      todos `@Transactional` donde corresponde) — reproduce exactamente la semántica original de
+      `Owner.getPet(name, ignoreNew)` usando `pet.isNew()` como flag `ignoreNew` (unifica los dos
+      chequeos de duplicado de create/update en un solo método).
+- [x] `VisitService` (`createVisit`, `validateVisitDate`)
+- [x] `FieldViolation` (record) y `ValidationException` (excepción compartida, package-private)
+- [x] Refactor `PetController` / `VisitController` a orquestación pura (ya no llaman
+      `owners.save(...)` directamente)
+- [x] `PetController.java`: **147 líneas crudas** (`wc -l`) / **98 líneas** con la metodología
+      "sin comentarios ni blancos" del §0.2 del plan. El original tenía 183/124 respectivamente
+      con esas mismas dos métricas — el criterio "<100 LOC" del plan solo es alcanzable con la
+      segunda metodología (ver desviación #4 abajo); con esa métrica **sí se cumple** (98 < 100).
+- [x] `PetServiceTests` (4 tests) y `VisitServiceTests` (3 tests) con Mockito puro
+      (`@ExtendWith(MockitoExtension.class)`, sin contexto Spring), cubriendo: nombre duplicado al
+      crear (rechaza), nombre duplicado al editar la misma mascota por id (acepta), `birthDate`
+      futura (rechaza), caso feliz con `verify(owners, times(1)).save(...)`; y para visitas: fecha
+      pasada (rechaza), fecha de hoy (rechaza, la regla es estrictamente futura), caso feliz.
+- [x] `./mvnw verify` en verde: **54 tests, 0 fallos** (47 originales + 7 nuevos), sin modificar
+      ninguna aserción existente.
+- [x] Corrección durante la implementación: `PetControllerTests`/`VisitControllerTests` fallaban
+      al cargar el contexto porque `@WebMvcTest` no registra beans `@Service` y el constructor de
+      los controllers ahora exige `PetService`/`VisitService`. Se resolvió con `@Import(PetService
+      .class)` / `@Import(VisitService.class)` (trae el service **real**, no un mock, usando el
+      `OwnerRepository` ya mockeado) — cero cambios de aserciones, solo una anotación añadida.
+- [x] Corrección de diseño durante la implementación: la primera versión cortaba en
+      `result.hasErrors()` **antes** de invocar al service, lo que rompía dos tests que combinan
+      un error de Bean Validation (`type` faltante) con una regla de negocio (nombre duplicado /
+      fecha futura) en la misma petición — el código original evaluaba siempre ambas reglas y
+      solo cortaba al final. Se corrigió: el controller ahora invoca los métodos de validación del
+      service **siempre** (antes de decidir persistir), y solo llama a `createPet`/`updatePet` si
+      el resultado combinado no tiene errores; `ValidationException` queda como respaldo defensivo
+      para llamadores futuros que invoquen el service directamente sin pasar por este pre-chequeo.
+- [x] Commit de cierre de Fase 2.
 
 ## Fase 3 — F-05 (API REST Owners)
 
@@ -112,3 +141,13 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 3. **CI/CD sin actualizar a Java 21.** `.github/workflows/*.yml` quedan en Java 17 porque tocar
    pipelines de CI/CD está explícitamente fuera de alcance (`CLAUDE.md`). Si se ejecutan, fallarán
    al compilar con `java.version=21`; es un efecto esperado de la decisión de alcance, no un bug.
+4. **Metodología de conteo de LOC para el criterio "<100 líneas" de F-03.** El plan cita "183" como
+   el tamaño actual de `PetController` y pide dejarlo bajo 100, pero en la Fase 0 especifica contar
+   LOC "sin comentarios ni líneas en blanco" — con esa metodología el original mide 124, no 183
+   (183 es el conteo crudo con `wc -l`, que incluye la cabecera de licencia de 15 líneas presente
+   en todos los archivos del proyecto). Cumplir "<100" con el conteo crudo es matemáticamente
+   inviable sin romper convenciones del proyecto (quitar la cabecera de licencia) o eliminar
+   métodos `@ModelAttribute`/`@InitBinder` requeridos. Se adoptó la metodología "sin comentarios ni
+   blancos" del propio §0.2 del plan como la consistente: `PetController` quedó en 98 líneas por
+   esa métrica (147 en crudo). Ambas cifras están documentadas en `baseline-metrics.md` y en la
+   Fase 2 de este archivo para que se pueda auditar la decisión.

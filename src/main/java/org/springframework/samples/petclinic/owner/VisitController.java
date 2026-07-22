@@ -44,8 +44,11 @@ class VisitController {
 
 	private final OwnerRepository owners;
 
-	public VisitController(OwnerRepository owners) {
+	private final VisitService visitService;
+
+	public VisitController(OwnerRepository owners, VisitService visitService) {
 		this.owners = owners;
+		this.visitService = visitService;
 	}
 
 	@InitBinder
@@ -97,16 +100,19 @@ class VisitController {
 	@PostMapping("/owners/{ownerId}/pets/{petId}/visits/new")
 	public String processNewVisitForm(@ModelAttribute Owner owner, @PathVariable int petId, @Valid Visit visit,
 			BindingResult result, RedirectAttributes redirectAttributes) {
-		if (visit.getDate() != null && !visit.getDate().isAfter(LocalDate.now())) {
-			result.rejectValue("date", "typeMismatch.visitDate");
-		}
 
 		if (result.hasErrors()) {
 			return "pets/createOrUpdateVisitForm";
 		}
 
-		owner.addVisit(petId, visit);
-		this.owners.save(owner);
+		try {
+			this.visitService.createVisit(owner, petId, visit);
+		}
+		catch (ValidationException ex) {
+			ex.getViolations().forEach(v -> result.rejectValue(v.field(), v.code(), v.defaultMessage()));
+			return "pets/createOrUpdateVisitForm";
+		}
+
 		redirectAttributes.addFlashAttribute("message", "Your visit has been booked");
 		return "redirect:/owners/{ownerId}";
 	}
