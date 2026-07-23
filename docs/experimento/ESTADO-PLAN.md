@@ -14,7 +14,7 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 | 4 | Diagramas secuencia/clases to-be | ✅ Completa | 2026-07-22 |
 | 5 | Contenedores | ✅ Completa | 2026-07-22 |
 | 6 | Terraform sobre AWS | ✅ Completa | 2026-07-22 |
-| 7 | Estimación y esfuerzo real | ⬜ Pendiente (arranca en paralelo desde Fase 0) | — |
+| 7 | Estimación y esfuerzo real | ✅ Completa | 2026-07-22 |
 
 ---
 
@@ -220,9 +220,28 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 
 ## Fase 7 — Estimación y esfuerzo real (paralelo desde Fase 0)
 
-- [ ] `docs/experimento/estimacion.md` (tabla de puntos de historia, sin asignar — la llena el equipo)
-- [ ] `docs/experimento/bitacora-esfuerzo.csv`
-- [ ] `docs/experimento/scripts/medir-esfuerzo.sh`
+- [x] `docs/experimento/estimacion.md`: tabla de 29 subtareas (F03-1..7, F05-1..7, J21-1,
+      DOC-1..3, TF-1..6, DIAG-1..5) en escala Fibonacci, **puntos en blanco a propósito** —
+      los asigna el equipo, no la IA. Incluye sección "a completar por el equipo" para la
+      unidad de estimación y las dos preguntas orientadoras de `CLAUDE.md` §7.1 (sin
+      respuestas precargadas), la nota metodológica de que el tiempo entre commits es un
+      proxy (no la fuente autoritativa — la bitácora manual sí lo es), y la nota de
+      honestidad sobre uso de IAG de §7.3.
+- [x] `docs/experimento/bitacora-esfuerzo.csv` con los encabezados exactos pedidos
+      (`fecha,tarea_id,responsable,hora_inicio,hora_fin,horas,tipo_esfuerzo,observaciones`),
+      sin filas — la completa el equipo.
+- [x] `docs/experimento/scripts/medir-esfuerzo.sh`: recorre el git log y exporta a
+      `metricas-commits.csv` (hash, fecha/hora, autor, mensaje, líneas añadidas/eliminadas,
+      horas desde el commit anterior). Acota el rango al commit base documentado en
+      `baseline-metrics.md` (`b05b681...`), no a toda la rama — de lo contrario habría
+      arrastrado el historial completo del PetClinic original (miles de commits ajenos al
+      experimento, desde 2009). Corrección durante la prueba: el primer intento perdía
+      silenciosamente el último commit (`git log --pretty=format` no añade salto de línea
+      final, y un `while read` sin esa línea final no ejecuta el cuerpo del bucle para el
+      último registro); se corrigió añadiendo un `echo` final al pipe y filtrando líneas
+      vacías. Probado en caliente contra `feature/modernizado`: exportó correctamente los
+      10 commits de las Fases 0-6.2. `metricas-commits.csv` es un artefacto generado, no se
+      versiona (añadido a `.gitignore` junto con `docs/plantuml/export/`).
 
 ---
 

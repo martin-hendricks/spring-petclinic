@@ -61,3 +61,7 @@ override.tf.json
 *_override.tf.json
 .terraformrc
 terraform.rc
+
+### Experimento — artefactos generados, no fuente de verdad ###
+docs/plantuml/export/
+docs/experimento/metricas-commits.csv
