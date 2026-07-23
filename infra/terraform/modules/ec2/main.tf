@@ -17,85 +17,33 @@ locals {
   roles = ["legado", "modernizado"]
 }
 
-# Permisos mínimos para las instancias: pull de ECR y escritura de logs/métricas en
-# CloudWatch. Nada de AdministratorAccess ni policies gestionadas amplias.
-resource "aws_iam_role" "ec2" {
-  name = "spring-petclinic-ec2-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "ec2.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-}
-
-resource "aws_iam_role_policy" "ecr_pull" {
-  name = "ecr-pull"
-  role = aws_iam_role.ec2.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = "ecr:GetAuthorizationToken"
-        Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "ecr:BatchGetImage",
-          "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchCheckLayerAvailability",
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy" "cloudwatch" {
-  name = "cloudwatch-logs-metrics"
-  role = aws_iam_role.ec2.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents",
-          "logs:DescribeLogStreams",
-        ]
-        Resource = "arn:aws:logs:*:*:log-group:/spring-petclinic/*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = "cloudwatch:PutMetricData"
-        Resource = "*"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_instance_profile" "ec2" {
-  name = "spring-petclinic-ec2-profile"
-  role = aws_iam_role.ec2.name
-}
-
+# DESVIACIÓN (ver ESTADO-PLAN.md / README.md): el diseño original de esta fase creaba un
+# aws_iam_role + aws_iam_instance_profile propios, de mínimo privilegio. La cuenta real
+# usada para desplegar (AWS Academy Learner Lab) deniega iam:CreateRole por política de la
+# cuenta (verificado con un create-role de prueba: AccessDenied), y solo permite reutilizar
+# el rol/instance profile pre-aprovisionado "LabRole"/"LabInstanceProfile". Ese rol ya trae
+# adjunta AmazonEC2ContainerRegistryReadOnly (cubre el pull de ECR que pedía el diseño
+# original) más otras policies del laboratorio con permisos más amplios de lo que el
+# principio de mínimo privilegio hubiera elegido — es una limitación de la cuenta, no una
+# decisión de diseño de este módulo.
 resource "aws_instance" "app" {
   count                       = var.instance_count
   ami                         = local.ami_id
   instance_type               = var.instance_type
   subnet_id                   = var.public_subnet_ids[count.index % length(var.public_subnet_ids)]
   vpc_security_group_ids      = [var.app_security_group_id]
-  iam_instance_profile        = aws_iam_instance_profile.ec2.name
+  iam_instance_profile        = var.instance_profile_name
   associate_public_ip_address = true
+
+  # La AMI base de este AWS Academy Learner Lab trae solo 2 GB de disco raíz (verificado con
+  # `aws ec2 describe-images`), insuficiente para instalar docker + amazon-cloudwatch-agent
+  # (~517 MB instalados) más el propio SO: el primer intento de apply falló silenciosamente
+  # a mitad del user_data (dnf sin espacio, "needs 49MB more space"), dejando la instancia
+  # arriba pero sin el contenedor de la app corriendo. Se fuerza un volumen mayor.
+  root_block_device {
+    volume_size = var.root_volume_size
+    volume_type = "gp3"
+  }
 
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
     aws_region         = var.aws_region

@@ -35,3 +35,14 @@ variable "aws_region" {
   description = "Región AWS, usada por user_data para autenticar contra ECR"
   type        = string
 }
+
+variable "instance_profile_name" {
+  description = "Nombre de un instance profile IAM YA EXISTENTE a asociar a las instancias (este módulo no crea IAM: ver la nota de desviación en main.tf). En AWS Academy Learner Lab, usar 'LabInstanceProfile'."
+  type        = string
+}
+
+variable "root_volume_size" {
+  description = "Tamaño (GB) del volumen raíz. La AMI base observada trae solo 2 GB, insuficiente para docker + amazon-cloudwatch-agent (ver nota en main.tf)."
+  type        = number
+  default     = 20
+}

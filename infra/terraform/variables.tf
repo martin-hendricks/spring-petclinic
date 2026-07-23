@@ -51,3 +51,9 @@ variable "instance_count" {
   type        = number
   default     = 2
 }
+
+variable "instance_profile_name" {
+  description = "Nombre de un instance profile IAM ya existente (ver desviación documentada en modules/ec2/main.tf: esta cuenta no permite crear IAM roles nuevos). Default para AWS Academy Learner Lab."
+  type        = string
+  default     = "LabInstanceProfile"
+}

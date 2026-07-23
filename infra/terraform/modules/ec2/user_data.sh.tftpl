@@ -40,4 +40,14 @@ CWCONFIG
 aws ecr get-login-password --region ${aws_region} | docker login --username AWS --password-stdin ${ecr_repository_url}
 
 docker pull ${ecr_repository_url}:latest
-docker run -d --name spring-petclinic --restart unless-stopped -p 8080:8080 ${ecr_repository_url}:latest
+
+# El Dockerfile fija SPRING_PROFILES_ACTIVE=postgres como default de la imagen (pensado para
+# docker-compose.app.yml, donde SÍ hay un sidecar de PostgreSQL con esas credenciales
+# inyectadas). Aquí no se pasan credenciales de RDS al contenedor a propósito (evita
+# exponerlas en texto plano dentro de user_data, legible por cualquiera con permiso
+# DescribeInstanceAttribute) — así que se sobreescribe el perfil a vacío para forzar la BD
+# H2 embebida. Sin este override, el contenedor intenta conectarse a Postgres en localhost,
+# falla, y --restart unless-stopped lo reinicia en bucle indefinidamente.
+docker run -d --name spring-petclinic --restart unless-stopped -p 8080:8080 \
+	-e SPRING_PROFILES_ACTIVE= \
+	${ecr_repository_url}:latest

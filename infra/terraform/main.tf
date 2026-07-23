@@ -30,6 +30,7 @@ module "ec2" {
   app_security_group_id = module.network.app_security_group_id
   ecr_repository_url    = module.ecr.repository_url
   aws_region            = var.aws_region
+  instance_profile_name = var.instance_profile_name
 }
 
 module "observability" {

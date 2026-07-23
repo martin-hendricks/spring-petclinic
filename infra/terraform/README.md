@@ -13,7 +13,7 @@ infra/terraform/
     network/        VPC, subredes públicas/privadas, security groups
     ecr/             Repositorio de la imagen de la app
     rds/             PostgreSQL 18.x en subred privada
-    ec2/             Instancias gemelas legado/modernizado + IAM mínimo
+    ec2/             Instancias gemelas legado/modernizado (reutiliza IAM existente, ver nota abajo)
     observability/   Log group y alarmas CPU/memoria
 ```
 
@@ -38,9 +38,10 @@ dos pasos:
 cd infra/terraform
 terraform init
 
-# 1) Todo menos las instancias EC2 (necesitamos el repo ECR creado primero)
-terraform plan  -target=module.network -target=module.ecr -target=module.rds \
-  -target=module.observability -out=tfplan-infra
+# 1) Red, ECR y RDS únicamente (module.observability NO va aquí: depende de
+#    module.ec2.instance_ids, así que -target lo arrastraría junto con las instancias EC2
+#    y perdería el sentido de este primer paso — se aplica junto con ec2 en el paso 3).
+terraform plan -target=module.network -target=module.ecr -target=module.rds -out=tfplan-infra
 terraform apply tfplan-infra
 
 # 2) Publicar la imagen en el ECR recién creado
@@ -49,7 +50,7 @@ aws ecr get-login-password --region us-east-1 | \
 docker tag spring-petclinic:latest "$(terraform output -raw ecr_repository_url):latest"
 docker push "$(terraform output -raw ecr_repository_url):latest"
 
-# 3) Ahora sí, las instancias EC2 (su user_data ya encuentra la imagen)
+# 3) Ahora sí, el resto completo (EC2 + observability; su user_data ya encuentra la imagen)
 terraform plan -out=tfplan-full
 terraform apply tfplan-full
 ```
@@ -74,16 +75,46 @@ terraform destroy
   de experimento, no de producción (ver comentario en `modules/rds/main.tf`).
 - **Security group de RDS referencia el SG de la app por `security_group_id`**, nunca abre 5432 a
   un CIDR — solo el tráfico que ya pasó por la capa de la aplicación puede llegar a la base.
-- **IAM de mínimo privilegio en EC2**: solo `ecr:GetAuthorizationToken`/`BatchGetImage`/etc. para
-  el pull de la imagen, y `logs:*`/`cloudwatch:PutMetricData` acotado al log group del proyecto.
-  Nada de policies gestionadas amplias ni `AdministratorAccess`.
+- **IAM de EC2 — desviación registrada.** El diseño original creaba un `aws_iam_role` propio de
+  mínimo privilegio (solo `ecr:GetAuthorizationToken`/`BatchGetImage`/etc. y
+  `logs:*`/`cloudwatch:PutMetricData` acotado). La cuenta usada para el despliegue real (AWS
+  Academy Learner Lab) deniega `iam:CreateRole` por política de la cuenta (verificado con un
+  `create-role` de prueba: `AccessDenied`), así que el módulo `ec2` ahora recibe
+  `instance_profile_name` como variable y reutiliza el `LabInstanceProfile` pre-aprovisionado
+  (default `"LabInstanceProfile"`), que ya trae adjunta `AmazonEC2ContainerRegistryReadOnly` — cubre
+  el pull de ECR, aunque con permisos más amplios de lo que el mínimo privilegio original hubiera
+  elegido. En una cuenta AWS sin esa restricción, se puede reintroducir el rol propio y pasar su
+  nombre por la misma variable.
 - **`instance_count = 2` por defecto**: el pre-experimento pide instancias gemelas (legado y
   modernizado) para poder comparar métricas bajo las mismas condiciones de infraestructura.
 - **Alarma de memoria depende del agente de CloudWatch** instalado vía `user_data`
-  (`modules/ec2/user_data.sh.tftpl`): EC2 no publica memoria de forma nativa. No se pudo verificar
-  contra una cuenta AWS real que el paquete `amazon-cloudwatch-agent` esté disponible tal cual en
-  los repos de Amazon Linux 2023 al momento de aplicar — queda anotado como riesgo a validar por
-  el equipo antes de un `apply` real.
+  (`modules/ec2/user_data.sh.tftpl`): EC2 no publica memoria de forma nativa. **Verificado en
+  un despliegue real**: el paquete `amazon-cloudwatch-agent` sí está disponible en los repos de
+  Amazon Linux 2023 y se instala sin problema — el riesgo que se había anotado en el checkpoint
+  6.2 no se materializó. Las alarmas de memoria sí quedan en `INSUFFICIENT_DATA` los primeros
+  ~10 minutos (`evaluation_periods = 2` × `period = 300s`), es esperado, no un error.
+- **`root_block_device` con tamaño explícito (`root_volume_size`, default 20 GB) — desviación
+  descubierta en el primer despliegue real.** La AMI base de Amazon Linux 2023 usada en este
+  Learner Lab trae solo **2 GB** de disco raíz (`aws ec2 describe-images` lo confirmó),
+  insuficiente para `docker` + `amazon-cloudwatch-agent` (~517 MB instalados). Sin este bloque,
+  `dnf install` falla a mitad de camino ("needs 49MB more space") y, como `user_data` usa `set
+  -euxo pipefail`, el resto del script (arranque de Docker, pull, `docker run`) nunca se ejecuta
+  — la instancia queda arriba pero sin la app. Diagnosticado con `aws ec2 get-console-output`.
+- **`SPRING_PROFILES_ACTIVE=` (vacío) forzado en el `docker run` de `user_data` — segunda
+  desviación descubierta en el mismo despliegue.** El `Dockerfile` (Fase 5) fija
+  `SPRING_PROFILES_ACTIVE=postgres` como default de la imagen, pensado para
+  `docker-compose.app.yml`, donde sí hay un sidecar de PostgreSQL con las credenciales
+  inyectadas por variables de entorno. En EC2, `user_data` deliberadamente **no** pasa las
+  credenciales de RDS al contenedor (para no exponerlas en texto plano dentro de `user_data`,
+  legible por cualquiera con permiso `DescribeInstanceAttribute`) — sin el override, el
+  contenedor intentaba conectarse a Postgres en `localhost`, fallaba, y `--restart
+  unless-stopped` lo reiniciaba en bucle indefinidamente (visible en `get-console-output` como
+  interfaces `veth*` de Docker creándose y destruyéndose cada 10-60s). **Consecuencia real:** las
+  instancias EC2 de este despliegue sirven la app contra **H2 embebida, no contra la RDS que
+  Terraform aprovisionó** — el RDS existe, está cifrado y accesible desde el security group de
+  la app, pero nada lo usa todavía. Conectarlas de verdad requeriría un mecanismo de secretos
+  (SSM Parameter Store / Secrets Manager) en vez de variables de entorno en `user_data`; queda
+  fuera del alcance resuelto en esta sesión.
 
 ## Estimación de costo mensual aproximado
 

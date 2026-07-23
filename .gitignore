@@ -61,6 +61,7 @@ override.tf.json
 *_override.tf.json
 .terraformrc
 terraform.rc
+tfplan*
 
 ### Experimento — artefactos generados, no fuente de verdad ###
 docs/plantuml/export/

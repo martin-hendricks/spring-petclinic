@@ -218,6 +218,78 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
     **No se ejecutó `terraform plan` ni `terraform apply`** con recursos reales, tal como pide
     el plan explícitamente por control de costos.
 
+### Despliegue real ejecutado (post-aprobación explícita del usuario, 2026-07-23)
+
+El usuario pidió explícitamente levantar la infraestructura descrita, con credenciales AWS ya
+configuradas. Se verificó identidad (`aws sts get-caller-identity`) antes de tocar nada: cuenta
+`538120053579`, rol `voclabs` — un **AWS Academy Learner Lab**, no una cuenta de producción.
+
+- **Desviación descubierta y corregida:** la cuenta deniega `iam:CreateRole` (verificado con un
+  `create-role` de prueba descartable → `AccessDenied`). El módulo `ec2` original creaba su
+  propio `aws_iam_role`/`aws_iam_instance_profile` de mínimo privilegio; se reemplazó por una
+  variable `instance_profile_name` (default `"LabInstanceProfile"`) que reutiliza el instance
+  profile pre-aprovisionado del laboratorio — ya trae adjunta
+  `AmazonEC2ContainerRegistryReadOnly`, cubre el pull de ECR. Detalle completo en
+  `infra/terraform/README.md` → "Decisiones de diseño relevantes".
+- **Bug corregido en el propio `README.md`:** el orden de aplicación en dos pasos documentado
+  originalmente incluía `-target=module.observability` en el primer paso, pero ese módulo
+  depende de `module.ec2.instance_ids` — con `-target`, Terraform habría arrastrado también las
+  instancias EC2 al primer paso, anulando el propósito de diferirlas hasta después del push de
+  la imagen. Corregido: paso 1 = `network`+`ecr`+`rds` únicamente; paso 3 = todo lo demás.
+  Se determinó al construir el plan real, no en el diseño original (no se había probado en
+  caliente hasta ahora).
+- **Paso 1** (`terraform apply` con `-target=network,ecr,rds`): 15 recursos creados sin errores.
+  PostgreSQL `18.3` fue aceptado por la API de RDS (la versión que en el checkpoint 6.2 se había
+  marcado como "no verificada contra una cuenta real" — queda confirmada).
+- **Paso 2:** imagen de la Fase 5 (`spring-petclinic-app:latest`, 357 MB, ya construida
+  localmente) etiquetada y publicada en el ECR recién creado.
+- **Paso 3** (`terraform apply` completo — EC2 + observability): 7 recursos creados (2 instancias
+  + 1 log group + 4 alarmas) sin error de Terraform, pero las instancias no respondieron en el
+  puerto 8080 tras ~10 minutos. Diagnóstico con `aws ec2 get-console-output`: **segunda
+  desviación descubierta** — la AMI base de este Learner Lab trae solo **2 GB de disco raíz**
+  (`aws ec2 describe-images` lo confirmó), insuficiente para `dnf install docker
+  amazon-cloudwatch-agent` (~517 MB instalados). El `user_data` usa `set -euxo pipefail`, así que
+  la instalación falló ("needs 49MB more space on the / filesystem") y todo lo posterior
+  (arranque de Docker, login ECR, `docker run`) nunca se ejecutó — la instancia quedó arriba pero
+  sin la app corriendo. Corregido en `modules/ec2/main.tf`: se añadió un bloque
+  `root_block_device` con tamaño parametrizable (`root_volume_size`, default 20 GB, gp3) y se
+  recreó ambas instancias con `terraform apply -replace=...` (6 recursos reemplazados: 2 EC2 + 4
+  alarmas, cuyos nombres incluyen el ID de instancia).
+- **Tercera desviación descubierta al recrear las instancias:** con el disco corregido, `dnf
+  install` sí completó, pero las instancias seguían sin responder. El log de consola mostró
+  interfaces de red `veth*` de Docker creándose y destruyéndose cada 10-60s — un contenedor
+  crasheando y reiniciándose en bucle (`--restart unless-stopped`). Causa: el `Dockerfile`
+  fija `SPRING_PROFILES_ACTIVE=postgres` como default de imagen (para el escenario de
+  `docker-compose.app.yml`, que sí inyecta credenciales de un sidecar Postgres); en EC2,
+  `user_data` deliberadamente no pasa credenciales de RDS al contenedor (para no exponerlas en
+  texto plano, legible por cualquiera con `DescribeInstanceAttribute`), así que el contenedor
+  intentaba conectarse a Postgres en `localhost`, fallaba, y se reiniciaba indefinidamente.
+  Corregido: `user_data.sh.tftpl` ahora pasa `-e SPRING_PROFILES_ACTIVE=` (vacío) al `docker
+  run`, forzando la BD H2 embebida. **Consecuencia real, documentada también en
+  `infra/terraform/README.md`:** estas instancias EC2 sirven la app contra H2, no contra la RDS
+  que Terraform aprovisionó — el RDS existe y está correctamente asegurado, pero nada lo usa
+  todavía; conectarlas de verdad requeriría un mecanismo de secretos (SSM Parameter Store /
+  Secrets Manager), fuera del alcance resuelto en esta sesión. Se recreó de nuevo con
+  `-replace=...` (otros 6 recursos).
+- **Resultado final verificado (2026-07-23):** ambas instancias `RUNNING` y respondiendo. IP
+  `44.193.211.76` (rol `legado`): `GET /actuator/health` → `{"status":"UP"}`, `GET /` → 200
+  HTML. IP `3.95.208.52` (rol `modernizado`): `GET /actuator/health` → `{"status":"UP"}`, `GET
+  /api/owners/1` → 200 JSON (`George Franklin`, mascota `Leo`). Alarmas CloudWatch: las 2 de CPU
+  en `OK` (con datos); las 2 de memoria en `INSUFFICIENT_DATA` (esperado, necesitan
+  `evaluation_periods=2 × period=300s` ≈ 10 min de datos acumulados — no es un error). Recursos
+  totales aplicados: 22 (15 red/ECR/RDS + 2 EC2 + 1 log group + 4 alarmas).
+
+**Resumen de las 3 desviaciones reales encontradas al desplegar** (ninguna estaba en el diseño
+original de la Fase 6, las tres surgieron al aplicar contra una cuenta AWS real): (1) IAM
+Learner Lab no permite `iam:CreateRole` → se reutiliza `LabInstanceProfile`; (2) AMI base con
+solo 2 GB de disco → `root_block_device` explícito de 20 GB; (3) `Dockerfile` con
+`SPRING_PROFILES_ACTIVE=postgres` por default + `user_data` sin credenciales de RDS por diseño
+→ conflicto que causaba un crash-loop, resuelto forzando el perfil vacío (H2). Las tres son el
+tipo de hallazgo que la rúbrica del experimento pide reportar como desviación, no como fallo:
+ningún `./mvnw verify` ni test unitario las habría detectado — solo aparecieron al aplicar la
+infraestructura contra una cuenta real, que es exactamente el valor de haber hecho este
+despliegue en vez de dejarlo solo en `terraform validate`.
+
 ## Fase 7 — Estimación y esfuerzo real (paralelo desde Fase 0)
 
 - [x] `docs/experimento/estimacion.md`: tabla de 29 subtareas (F03-1..7, F05-1..7, J21-1,
