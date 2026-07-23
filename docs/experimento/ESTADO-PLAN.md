@@ -12,7 +12,7 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 | 2 | F-03 — Capa `@Service` (Pets & Visits) | ✅ Completa | 2026-07-21 |
 | 3 | F-05 — API REST Owners | ✅ Completa | 2026-07-21 |
 | 4 | Diagramas secuencia/clases to-be | ✅ Completa | 2026-07-22 |
-| 5 | Contenedores | ⬜ Pendiente | — |
+| 5 | Contenedores | ✅ Completa | 2026-07-22 |
 | 6 | Terraform sobre AWS | ⬜ Pendiente | — |
 | 7 | Estimación y esfuerzo real | ⬜ Pendiente (arranca en paralelo desde Fase 0) | — |
 
@@ -153,12 +153,21 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 
 ## Fase 5 — Contenedores
 
-- [ ] `Dockerfile` multi-stage (build JDK 21 + runtime JRE 21 slim, usuario no root, `HEALTHCHECK`)
-- [ ] `.dockerignore`
-- [ ] `docker-compose.app.yml` (nuevo, no se toca `docker-compose.yml`)
-- [ ] `docs/experimento/contenedores.md`
-- [ ] Verificación manual: imagen construida, compose levantado, `GET /api/owners/1` y `GET /owners/1`
-      responden, tamaño de imagen reportado
+- [x] `Dockerfile` multi-stage: build con `eclipse-temurin:21-jdk` + `./mvnw` (cache de
+      dependencias en capa separada vía `dependency:go-offline`), runtime con
+      `eclipse-temurin:21-jre-alpine`, usuario no root `spring:spring`, `HEALTHCHECK` sobre
+      `/actuator/health`, `SPRING_PROFILES_ACTIVE` parametrizable (default `postgres`).
+- [x] `.dockerignore` (`target/`, `build/`, `.git/`, `docs/`, `*.md`, IDE, `.devcontainer/`).
+- [x] `docker-compose.app.yml` — nuevo y separado; **no se tocó** el `docker-compose.yml`
+      existente. `depends_on: condition: service_healthy` sobre un `HEALTHCHECK` de `pg_isready`
+      en el servicio `postgres`.
+- [x] `docs/experimento/contenedores.md` con las decisiones de diseño y el log de verificación.
+- [x] **Verificado en caliente** (Docker sí está disponible en este entorno, ver desviación #5):
+      `docker compose -f docker-compose.app.yml up -d --build` → `postgres` y `app` healthy;
+      `GET /api/owners/1` → 200 JSON; `GET /owners/1` → 200 HTML (sin regresión Thymeleaf);
+      `GET /actuator/health` → `{"status":"UP"}`; `docker compose exec app whoami` → `spring`
+      (confirma usuario no root). Contenedores bajados con `down -v` al terminar la verificación.
+      **Tamaño final de la imagen: 357 MB.**
 
 ## Fase 6 — Terraform AWS
 

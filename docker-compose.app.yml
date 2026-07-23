@@ -1,0 +1,32 @@
+# Levanta la app modernizada (imagen construida desde el Dockerfile de la raíz) junto a
+# PostgreSQL. Archivo NUEVO y separado de docker-compose.yml: ese solo provisiona bases de
+# datos para desarrollo local (cartografía A2); no se modifica para no invalidar esa evidencia.
+services:
+  postgres:
+    image: postgres:18.3
+    environment:
+      POSTGRES_USER: petclinic
+      POSTGRES_PASSWORD: petclinic
+      POSTGRES_DB: petclinic
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U petclinic -d petclinic"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres
+      POSTGRES_URL: jdbc:postgresql://postgres:5432/petclinic
+      POSTGRES_USER: petclinic
+      POSTGRES_PASS: petclinic
+    depends_on:
+      postgres:
+        condition: service_healthy

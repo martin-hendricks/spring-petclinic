@@ -1,0 +1,10 @@
+target/
+build/
+.git/
+.gitignore
+docs/
+*.md
+.idea/
+.vscode/
+*.iml
+.devcontainer/
