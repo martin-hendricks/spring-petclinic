@@ -141,11 +141,15 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
       conservados (MVC, entidades, templates — color amarillo) de los nuevos (capa `@Service` y
       API REST — color azul); RDS PostgreSQL en subred privada; ECR + CloudWatch. Anticipa las
       Fases 5-6 (aún no implementadas) tal como pide el criterio de la Fase 4.
-- [x] `docs/plantuml/README.md` actualizado con la tabla "Iteración 2" (diagramas 08-11).
-- [ ] **PNGs sin exportar** — `plantuml`, `graphviz` (`dot`) y `docker` no están instalados en este
-      entorno de ejecución (verificado con `which`/`find`, sin resultados). Queda documentado en el
-      propio README de `docs/plantuml/` con el comando de exportación para cuando se disponga de
-      alguna de esas herramientas. **Desviación registrada** (ver #5 abajo).
+- [x] `docs/plantuml/README.md` actualizado con la tabla "Iteración 2" (diagramas 08-11) y el
+      comando de exportación vía Docker.
+- [x] **PNGs exportados** — `plantuml`/`graphviz` no están instalados como binarios nativos, pero
+      **Docker sí está disponible** en el entorno (verificación inicial con `which docker` fue
+      errónea: se leyó la salida de un comando en background antes de que terminara de escribirla;
+      corregido tras el aviso del usuario). Se generaron los 11 PNG —incluyendo los 7 as-is que
+      tampoco estaban exportados— con `docker run --rm -v "$(pwd)":/data plantuml/plantuml -tpng
+      -o /data/export /data/*.puml`, y se verificaron visualmente los 4 nuevos (08-11) contra el
+      código real.
 
 ## Fase 5 — Contenedores
 
@@ -191,10 +195,13 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
    blancos" del propio §0.2 del plan como la consistente: `PetController` quedó en 98 líneas por
    esa métrica (147 en crudo). Ambas cifras están documentadas en `baseline-metrics.md` y en la
    Fase 2 de este archivo para que se pueda auditar la decisión.
-5. **PNGs de los diagramas 08-11 no exportados en esta sesión.** El entorno de ejecución no tiene
-   `plantuml`, `graphviz` ni `docker` instalados (comprobado con `which`/`find`, sin resultados).
-   Los cuatro `.puml` de la Fase 4 sí se crearon completos y documentados en
-   `docs/plantuml/README.md`, junto con el comando exacto para exportarlos apenas se cuente con
-   alguna de esas herramientas (localmente o vía la extensión PlantUML de VS Code/Cursor). No
-   bloquea el resto del experimento porque el contenido de los diagramas es lo que aporta valor
-   para la rúbrica; el PNG es solo un formato de salida.
+5. **Falso negativo sobre disponibilidad de Docker (corregido).** Un chequeo inicial (`which
+   docker`) concluyó erróneamente que Docker no estaba disponible en el entorno: se leyó la salida
+   de un comando en background antes de que terminara de escribirse, cortando la línea de
+   `docker`. El usuario señaló la inconsistencia; al re-verificar, Docker (CLI, daemon y
+   `compose`) sí funciona con normalidad. `plantuml` y `graphviz` (`dot`) sí están genuinamente
+   ausentes como binarios nativos (confirmado con una verificación limpia), pero con Docker
+   disponible se generaron los 11 PNG vía `plantuml/plantuml` sin necesidad de instalar nada más.
+   Lección para próximas fases (5 y 6, que dependen de Docker/Terraform): re-verificar
+   disponibilidad de herramientas con un comando síncrono antes de asumir su ausencia por una
+   lectura parcial de un proceso en background.

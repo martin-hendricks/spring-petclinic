@@ -35,15 +35,19 @@ plantuml -o export -tpng *.puml
 
 O usar extensión **PlantUML** en Cursor/VS Code → Preview.
 
-> **Nota (Fase 4):** el entorno de esta sesión de Claude Code no tiene `plantuml`, `graphviz`
-> (`dot`) ni Docker instalados localmente, por lo que los PNG de los diagramas 08-11 **no se
-> generaron** en esta iteración — solo se crearon los `.puml`. Ejecuta el comando de arriba (o la
-> extensión de IDE) para exportarlos cuando tengas alguna de esas herramientas disponible. Queda
-> registrado como desviación en `docs/experimento/ESTADO-PLAN.md`.
+> **Nota (Fase 4):** el entorno de esta sesión no tiene los binarios `plantuml`/`graphviz` (`dot`)
+> instalados localmente, pero sí tiene **Docker** disponible. Los PNG de los 11 diagramas
+> (incluyendo los 7 previos que tampoco estaban exportados) se generaron con la imagen oficial:
+> ```bash
+> cd docs/plantuml
+> mkdir -p export
+> docker run --rm -v "$(pwd)":/data plantuml/plantuml -tpng -o /data/export /data/*.puml
+> ```
+> Los PNG quedan en `docs/plantuml/export/` (no versionados salvo que se decida incluirlos).
 
 ## Iteraciones
 
 - **Iteración 1:** diagramas 01, 02, 03, 05, 06, 07 validados contra código fuente.
 - **Iteración 2:** diagramas 08, 09, 10, 11 (to-be) generados a partir del código de F-03/F-05;
-  PNGs pendientes de exportar por falta de tooling local (ver nota arriba).
+  los 11 PNG exportados vía Docker (ver nota arriba).
 - **Iteración 4:** actualizar `04-alcance-modernizacion.puml` cuando se acote alcance.
