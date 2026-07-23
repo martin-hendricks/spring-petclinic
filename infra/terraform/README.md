@@ -66,6 +66,33 @@ terraform destroy
 > terminar. Este repositorio **no ejecuta `terraform apply` automáticamente** — es una acción
 > manual y deliberada del equipo, fuera del alcance de lo que genera este experimento.
 
+## Cómo acceder a la app desplegada
+
+```bash
+terraform output ec2_public_ips
+```
+
+Con esas IPs, **hay que especificar el esquema y el puerto explícitamente** — no hay balanceador
+ni reverse proxy en 80/443, todo se sirve directo en 8080 sobre HTTP plano (sin TLS):
+
+```
+http://<ip-instancia-0>:8080/              # UI Thymeleaf (rol "legado")
+http://<ip-instancia-1>:8080/api/owners/1  # API REST (rol "modernizado")
+http://<ip>:8080/actuator/health           # health check en cualquiera de las dos
+```
+
+**Hallazgo real de esta sesión:** al compartir solo la IP desnuda, el primer intento de acceso
+falló — el navegador interpretó `https://<ip>` por defecto (sin puerto), y como no hay nada
+escuchando en 443/80, la conexión se rechazó. No es un problema de seguridad ni de la instancia:
+las IPs y el DNS público que AWS asigna automáticamente
+(`ec2-<ip-con-guiones>.compute-1.amazonaws.com`) **no** implican un esquema ni un puerto por
+defecto — hay que escribir `http://` y `:8080` siempre. Este repositorio no configura Route 53
+ni ningún dominio propio.
+
+Las IPs son efímeras: cambian cada vez que Terraform recrea las instancias (`-replace`, o un
+`apply` que fuerce reemplazo por cambios en `user_data`/AMI/etc.). Volver a correr `terraform
+output ec2_public_ips` después de cualquier apply para obtener las vigentes.
+
 ## Decisiones de diseño relevantes
 
 - **Sin credenciales hardcodeadas.** `db_password` es `sensitive = true` y no tiene default;

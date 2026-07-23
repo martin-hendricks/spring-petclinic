@@ -278,11 +278,19 @@ configuradas. Se verificó identidad (`aws sts get-caller-identity`) antes de to
   en `OK` (con datos); las 2 de memoria en `INSUFFICIENT_DATA` (esperado, necesitan
   `evaluation_periods=2 × period=300s` ≈ 10 min de datos acumulados — no es un error). Recursos
   totales aplicados: 22 (15 red/ECR/RDS + 2 EC2 + 1 log group + 4 alarmas).
+- **Cuarto hallazgo, esta vez de acceso (no de infraestructura):** al compartir las IPs
+  desnudas con el usuario, el primer intento de acceso reportó "no logro llegar a ninguna de
+  esas direcciones". Diagnóstico: no fue un problema de red ni de la instancia (`curl` desde
+  esta sesión ya devolvía 200 en ese momento) — el navegador del usuario interpretaba
+  `https://<ip>` por defecto (sin puerto), y como no hay balanceador ni TLS en 80/443 (todo se
+  sirve HTTP plano en 8080), la conexión fallaba. Se corrigió indicando explícitamente el
+  formato `http://<ip>:8080/`. Documentado en `infra/terraform/README.md` → "Cómo acceder a la
+  app desplegada", para que no se repita el mismo diagnóstico manual la próxima vez.
 
-**Resumen de las 3 desviaciones reales encontradas al desplegar** (ninguna estaba en el diseño
-original de la Fase 6, las tres surgieron al aplicar contra una cuenta AWS real): (1) IAM
-Learner Lab no permite `iam:CreateRole` → se reutiliza `LabInstanceProfile`; (2) AMI base con
-solo 2 GB de disco → `root_block_device` explícito de 20 GB; (3) `Dockerfile` con
+**Resumen de las 3 desviaciones reales de infraestructura encontradas al desplegar** (ninguna
+estaba en el diseño original de la Fase 6, las tres surgieron al aplicar contra una cuenta AWS
+real): (1) IAM Learner Lab no permite `iam:CreateRole` → se reutiliza `LabInstanceProfile`; (2)
+AMI base con solo 2 GB de disco → `root_block_device` explícito de 20 GB; (3) `Dockerfile` con
 `SPRING_PROFILES_ACTIVE=postgres` por default + `user_data` sin credenciales de RDS por diseño
 → conflicto que causaba un crash-loop, resuelto forzando el perfil vacío (H2). Las tres son el
 tipo de hallazgo que la rúbrica del experimento pide reportar como desviación, no como fallo:
