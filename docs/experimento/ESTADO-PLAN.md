@@ -13,7 +13,7 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 | 3 | F-05 — API REST Owners | ✅ Completa | 2026-07-21 |
 | 4 | Diagramas secuencia/clases to-be | ✅ Completa | 2026-07-22 |
 | 5 | Contenedores | ✅ Completa | 2026-07-22 |
-| 6 | Terraform sobre AWS | 🛑 Bloqueada / esperando aprobación (checkpoint 6.1) | 2026-07-22 |
+| 6 | Terraform sobre AWS | ✅ Completa | 2026-07-22 |
 | 7 | Estimación y esfuerzo real | ⬜ Pendiente (arranca en paralelo desde Fase 0) | — |
 
 ---
@@ -189,9 +189,34 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
       `terraform plan` como verificación adicional (no pedida por el checkpoint): falló con
       `ExpiredToken` en STS porque no hay credenciales AWS configuradas en este entorno — es el
       comportamiento esperado sin credenciales, no un error de la configuración.
-- [ ] **Pendiente aprobación del usuario para continuar con 6.2** (módulos `ecr`, `rds`, `ec2`
-      con `instance_count = 2`, `observability`, `outputs.tf` extendido y
-      `infra/terraform/README.md` con estimación de costo).
+- [x] **Aprobado por el usuario, prompt 6.2 completo:**
+  - `modules/ecr`: repositorio con `scan_on_push = true` y lifecycle policy que conserva las
+    últimas 10 imágenes (`max_images` parametrizable).
+  - `modules/rds`: PostgreSQL `18.3` (misma major version que `docker-compose.yml` del legado),
+    `instance_class` parametrizable (default `db.t3.micro`), subredes **privadas**,
+    `publicly_accessible = false`, `storage_encrypted = true`, backups deshabilitados con
+    justificación documentada en un comentario (entorno de experimento, no producción).
+  - `modules/ec2`: `t3.medium`, `instance_count` parametrizable con **default 2** (instancias
+    gemelas `legado`/`modernizado`, etiquetadas por `Rol`), `user_data.sh.tftpl` instala Docker +
+    agente de CloudWatch, se autentica contra ECR y arranca el contenedor; rol IAM +
+    instance profile con permisos mínimos (`ecr:GetAuthorizationToken`/`BatchGetImage`/etc. y
+    `logs:*`/`cloudwatch:PutMetricData` acotado al log group del proyecto) — nada de
+    `AdministratorAccess`.
+  - `modules/observability`: log group con retención de 7 días, alarmas de CPU (`AWS/EC2`) y de
+    memoria (`CWAgent`, requiere el agente instalado en `user_data` — riesgo documentado, no se
+    pudo verificar contra una cuenta AWS real que el paquete esté disponible tal cual en los
+    repos de Amazon Linux 2023).
+  - `outputs.tf` raíz extendido: `ecr_repository_url`, `ec2_public_ips`, `rds_endpoint`
+    (`sensitive = true`).
+  - `infra/terraform/README.md`: orden de aplicación en dos pasos (red/ECR/RDS/observability
+    primero, publicar la imagen, luego EC2 — porque el `user_data` hace `docker pull` una sola
+    vez al arrancar), prerrequisitos, estimación de costo mensual aproximado
+    (~USD 80-85/mes corriendo 24/7, precios de lista orientativos no verificados contra la AWS
+    Pricing API en vivo desde este entorno).
+  - `terraform init`, `terraform fmt -recursive` (corrigió alineación en `main.tf`) y
+    `terraform validate` → `Success! The configuration is valid.` con los 5 módulos conectados.
+    **No se ejecutó `terraform plan` ni `terraform apply`** con recursos reales, tal como pide
+    el plan explícitamente por control de costos.
 
 ## Fase 7 — Estimación y esfuerzo real (paralelo desde Fase 0)
 

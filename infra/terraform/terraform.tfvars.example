@@ -9,3 +9,12 @@ public_subnet_cidrs   = ["10.0.1.0/24", "10.0.2.0/24"]
 private_subnet_cidrs  = ["10.0.101.0/24", "10.0.102.0/24"]
 
 app_port = 8080
+
+ecr_repository_name = "spring-petclinic"
+rds_instance_class  = "db.t3.micro"
+instance_count      = 2
+
+# db_password es sensitive y NO lleva un valor de ejemplo real aquí. Definila en tu
+# terraform.tfvars local (que .gitignore excluye) o como variable de entorno:
+#   export TF_VAR_db_password="elige-una-contrasena-fuerte"
+# db_password = "cambia-esto"

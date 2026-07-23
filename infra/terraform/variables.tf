@@ -27,3 +27,27 @@ variable "app_port" {
   type        = number
   default     = 8080
 }
+
+variable "ecr_repository_name" {
+  description = "Nombre del repositorio ECR de la imagen de la app"
+  type        = string
+  default     = "spring-petclinic"
+}
+
+variable "rds_instance_class" {
+  description = "Clase de instancia de la base de datos RDS"
+  type        = string
+  default     = "db.t3.micro"
+}
+
+variable "db_password" {
+  description = "Password de la base de datos RDS. NUNCA hardcodear aquí: proveer via terraform.tfvars (no versionado, ver terraform.tfvars.example) o la variable de entorno TF_VAR_db_password."
+  type        = string
+  sensitive   = true
+}
+
+variable "instance_count" {
+  description = "Número de instancias EC2. Por defecto 2: instancias gemelas legado/modernizado que pide el pre-experimento para comparar métricas."
+  type        = number
+  default     = 2
+}

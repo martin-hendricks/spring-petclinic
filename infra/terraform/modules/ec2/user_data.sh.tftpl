@@ -1,0 +1,43 @@
+#!/bin/bash
+# user_data de la instancia EC2 (Amazon Linux 2023): instala Docker, se autentica contra
+# ECR y arranca el contenedor de la app construido en la Fase 5.
+set -euxo pipefail
+
+dnf update -y
+dnf install -y docker awscli amazon-cloudwatch-agent
+
+systemctl enable --now docker
+usermod -aG docker ec2-user
+
+# Agente de CloudWatch: EC2 no publica memoria de forma nativa (solo CPU), y la Fase de
+# observability necesita ese dato para las alarmas de memoria. Config mínima: solo
+# mem_used_percent. NOTA: no se pudo verificar en una cuenta AWS real que el paquete
+# "amazon-cloudwatch-agent" esté disponible tal cual en los repos de AL2023 al momento de
+# aplicar; si `dnf install` falla, instalar manualmente desde el RPM oficial de AWS.
+cat <<'CWCONFIG' > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+{
+  "metrics": {
+    "namespace": "CWAgent",
+    "append_dimensions": {
+      "InstanceId": "$${aws:InstanceId}"
+    },
+    "metrics_collected": {
+      "mem": {
+        "measurement": ["mem_used_percent"]
+      }
+    }
+  }
+}
+CWCONFIG
+
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+	-a fetch-config -m ec2 -s \
+	-c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+
+# Login en ECR y arranque del contenedor. Si la imagen aun no fue publicada (docker
+# push) cuando esta instancia arranca por primera vez, este paso fallará: ver
+# infra/terraform/README.md para el orden recomendado de aplicación.
+aws ecr get-login-password --region ${aws_region} | docker login --username AWS --password-stdin ${ecr_repository_url}
+
+docker pull ${ecr_repository_url}:latest
+docker run -d --name spring-petclinic --restart unless-stopped -p 8080:8080 ${ecr_repository_url}:latest
