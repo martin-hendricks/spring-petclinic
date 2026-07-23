@@ -13,7 +13,7 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 | 3 | F-05 — API REST Owners | ✅ Completa | 2026-07-21 |
 | 4 | Diagramas secuencia/clases to-be | ✅ Completa | 2026-07-22 |
 | 5 | Contenedores | ✅ Completa | 2026-07-22 |
-| 6 | Terraform sobre AWS | ⬜ Pendiente | — |
+| 6 | Terraform sobre AWS | 🛑 Bloqueada / esperando aprobación (checkpoint 6.1) | 2026-07-22 |
 | 7 | Estimación y esfuerzo real | ⬜ Pendiente (arranca en paralelo desde Fase 0) | — |
 
 ---
@@ -171,10 +171,27 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 
 ## Fase 6 — Terraform AWS
 
-- [ ] Estructura `infra/terraform/` + módulo `network` (checkpoint: `terraform init`/`validate`)
-- [ ] Módulos `ecr`, `rds`, `ec2` (con `instance_count = 2`), `observability`
-- [ ] `outputs.tf`, `infra/terraform/README.md` con estimación de costo
-- [ ] `terraform validate` + `terraform fmt -check` (sin `terraform apply`)
+- [x] Estructura `infra/terraform/` (`main.tf`, `providers.tf`, `variables.tf`, `outputs.tf`,
+      `terraform.tfvars.example`, `modules/{network,ecr,rds,ec2,observability}/`).
+- [x] Provider AWS fijado (`~> 5.0`, resolvió `5.100.0`), `required_version >= 1.6.0`,
+      `default_tags` con `Project=spring-petclinic-modernizacion`, `Equipo=17`,
+      `Ambiente=experimento`, `ManagedBy=terraform` en todos los recursos.
+- [x] Módulo `network`: VPC (CIDR parametrizable), 2 subredes públicas + 2 privadas en AZs
+      distintas (`data.aws_availability_zones`), Internet Gateway + route table pública,
+      security group `app` (entrada al `app_port` desde internet) y security group `rds`
+      (entrada 5432 **solo** desde `aws_security_group.app.id`, sin CIDR abierto).
+- [x] `terraform.tfvars.example` con los valores por defecto; `terraform.tfvars` real excluido
+      vía `.gitignore` (patrón `*.tfvars` con excepción `!*.tfvars.example`); sin credenciales
+      hardcodeadas en ningún `.tf`.
+- [x] **Checkpoint 6.1 resuelto:** `terraform init` (descargó `hashicorp/aws 5.100.0`, generó
+      `.terraform.lock.hcl`), `terraform fmt -recursive` (corrigió alineación en `main.tf`) y
+      `terraform validate` → `Success! The configuration is valid.`. Se intentó también
+      `terraform plan` como verificación adicional (no pedida por el checkpoint): falló con
+      `ExpiredToken` en STS porque no hay credenciales AWS configuradas en este entorno — es el
+      comportamiento esperado sin credenciales, no un error de la configuración.
+- [ ] **Pendiente aprobación del usuario para continuar con 6.2** (módulos `ecr`, `rds`, `ec2`
+      con `instance_count = 2`, `observability`, `outputs.tf` extendido y
+      `infra/terraform/README.md` con estimación de costo).
 
 ## Fase 7 — Estimación y esfuerzo real (paralelo desde Fase 0)
 

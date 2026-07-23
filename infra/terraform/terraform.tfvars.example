@@ -1,0 +1,11 @@
+# Copia este archivo a terraform.tfvars (ignorado por git) y ajusta los valores.
+# terraform.tfvars NUNCA debe commitearse: puede terminar conteniendo secretos
+# (p. ej. la contraseña de la BD que se añadirá en el módulo rds, Fase 6.2).
+
+aws_region = "us-east-1"
+
+vpc_cidr              = "10.0.0.0/16"
+public_subnet_cidrs   = ["10.0.1.0/24", "10.0.2.0/24"]
+private_subnet_cidrs  = ["10.0.101.0/24", "10.0.102.0/24"]
+
+app_port = 8080
