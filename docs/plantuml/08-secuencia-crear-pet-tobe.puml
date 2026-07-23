@@ -1,0 +1,56 @@
+@startuml 08-secuencia-crear-pet-tobe
+title Flujo to-be — Crear mascota de owner (F-03) · POST /owners/{ownerId}/pets/new
+skinparam shadowing false
+
+actor Usuario
+participant "PetController" as PC
+participant "PetService" as PS
+participant "OwnerRepository" as OR
+participant "Owner\n(agregado)" as Owner
+database "owners, pets, types" as DB
+
+Usuario -> PC : POST /owners/{ownerId}/pets/new\n(owner, pet, BindingResult)
+
+group Validaciones de negocio (movidas del controller al service)
+	PC -> PS : validateDuplicateName(owner, pet, violations)
+	note right of PS
+	  Owner.getPet(name, pet.isNew())
+	  unifica el chequeo create/update
+	end note
+	PS --> PC : violations[]
+	PC -> PS : validateBirthDate(pet, violations)
+	PS --> PC : violations[]
+	PC -> PC : violations.forEach(\n  result.rejectValue(...))
+end
+
+alt result.hasErrors() (Bean Validation @Valid u\nreglas de negocio con violaciones)
+	PC --> Usuario : return createOrUpdatePetForm.html\n(sin persistir)
+else sin errores
+	group @Transactional (PetService#createPet)
+		PC -> PS : createPet(owner, pet)
+		note right of PS
+		  Re-valida como respaldo defensivo
+		  (por si se invoca sin pasar por el
+		  controller, p. ej. un futuro POST REST)
+		end note
+		PS -> Owner : addPet(pet)
+		PS -> OR : save(owner)
+		OR -> DB : INSERT/UPDATE cascada\npets
+		PS --> PC : pet
+	end
+	PC --> Usuario : redirect:/owners/{ownerId}\nflash "New Pet has been Added"
+end
+
+note over PC, PS
+  **Comparación con el as-is (07-secuencia-agregar-pet.puml):**
+  - Las reglas de nombre duplicado y fecha de nacimiento futura
+    vivían en PetController (L110-117); ahora viven en PetService,
+    reutilizables sin depender de BindingResult.
+  - owners.save(owner) ya no lo invoca el controller directamente;
+    lo hace el service dentro de un límite @Transactional explícito.
+  - El controller queda como orquestador puro: arma la lista de
+    violaciones, las traduce a result.rejectValue(...) y decide la
+    vista/redirect según el resultado combinado.
+end note
+
+@enduml

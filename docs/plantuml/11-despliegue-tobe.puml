@@ -1,0 +1,79 @@
+@startuml 11-despliegue-tobe
+title Spring PetClinic — Despliegue to-be (F-03 + F-05, Fases 5-6) [Iteración 1]
+skinparam shadowing false
+
+actor "Usuario" as USER
+actor "Cliente REST" as APICLIENT
+
+node "Cliente" as CLIENT <<device>> {
+	artifact "Navegador" as BROWSER
+}
+
+node "Runtime local / EC2 (t3.medium)" as HOST <<execution environment>> {
+	artifact "Docker Engine" as DOCKER
+	node "Contenedor petclinic\n(Dockerfile multi-stage, JRE 21 slim)" as CONTAINER <<Docker>> {
+		artifact "spring-petclinic.jar\nSpring Boot 4.0.3 · **Java 21**" as JAR #E8F5E9
+		artifact "MVC + Thymeleaf\n(legado, sin cambios)" as MVC #FFF8E1
+		artifact "**REST API /api/owners**\n(OwnerRestController)" as REST #E8F4FD
+		artifact "**Capa @Service**\n(PetService, VisitService, OwnerService)" as SVC #E8F4FD
+		artifact "Actuator\n/actuator/health" as ACT
+	}
+}
+
+node "Amazon EC2\n(instancias gemelas legado/modernizado)" as EC2 <<execution environment>> {
+	artifact "IAM role\n(pull ECR + logs/métricas CloudWatch)" as IAM
+}
+
+node "Amazon ECR" as ECR <<execution environment>> {
+	artifact "Imagen spring-petclinic\n(escaneo + lifecycle 10 imágenes)" as ECRIMG
+}
+
+database "Amazon RDS PostgreSQL 18.x\n(subred privada, storage_encrypted)" as RDS #E8F5E9
+database "H2 embebida\n(perfil default, legado)" as H2 #FFF8E1
+database "MySQL 9.6 / PostgreSQL 18.3\n(docker-compose.yml, legado)" as LOCALDB #FFF8E1
+
+cloud "Amazon CloudWatch" as CW {
+	artifact "Log group\nretención 7 días" as LOGS
+	artifact "Alarmas CPU / memoria" as ALARMS
+}
+
+USER --> BROWSER
+APICLIENT --> JAR : HTTPS :8080\n/api/owners (JSON)
+BROWSER --> JAR : HTTP :8080\nThymeleaf (HTML)
+JAR --> MVC
+JAR --> REST
+JAR --> SVC
+MVC --> SVC : delega en\n(F-03)
+REST --> SVC : delega en\n(F-05)
+JAR --> ACT
+JAR --> RDS : JDBC\nperfil postgres (AWS)
+JAR ..> H2 : JDBC\nperfil default (dev local)
+JAR ..> LOCALDB : JDBC\nperfil mysql/postgres (dev local)
+DOCKER --> CONTAINER
+EC2 --> DOCKER
+ECR --> EC2 : docker pull\n(user_data)
+IAM .up.> ECR
+JAR --> LOGS : logs
+EC2 --> ALARMS : métricas
+
+note bottom of CONTAINER
+  **Legado conservado (gris/amarillo):** entidades JPA, repositorios,
+  templates Thymeleaf, MVC controllers — sin cambios de comportamiento.
+  **Nuevo (azul):** capa @Service (F-03) y API REST /api/owners (F-05),
+  ambos añadidos sin tocar el camino MVC existente (patrón Wrapping).
+end note
+
+note bottom of RDS
+  Mismo motor/major version que docker-compose.yml del legado
+  (PostgreSQL) para que el experimento sea comparable.
+  Acceso solo desde el security group de la app (Fase 6).
+end note
+
+note right of HOST
+  Reemplaza el nodo "Runtime local / servidor" del as-is
+  (02-despliegue.puml): antes ejecutaba el JAR directo con
+  Java 17; ahora corre en contenedor Docker (Fase 5) con
+  Java 21 (Fase 1), desplegado sobre EC2 (Fase 6).
+end note
+
+@enduml

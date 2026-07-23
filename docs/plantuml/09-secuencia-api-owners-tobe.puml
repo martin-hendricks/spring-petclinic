@@ -1,0 +1,60 @@
+@startuml 09-secuencia-api-owners-tobe
+title Flujo to-be — API REST Owners (F-05) · GET /api/owners/{id}
+skinparam shadowing false
+
+actor "Cliente REST" as CLIENT
+participant "DispatcherServlet" as DS
+participant "OwnerRestController" as ORC
+participant "OwnerService" as OS
+participant "OwnerMapper" as OM
+participant "OwnerRepository" as OR
+participant "OwnerRestExceptionHandler" as ADVICE
+database "owners, pets, types" as DB
+
+CLIENT -> DS : GET /api/owners/{id}
+DS -> ORC : findById(id)
+
+group @Transactional(readOnly = true) (OwnerService)
+	ORC -> OS : findById(id)
+	OS -> OR : findById(id)
+	OR -> DB : SELECT owner + pets EAGER
+	DB --> OR : Optional<Owner>
+
+	alt owner presente
+		OR --> OS : Optional.of(owner)
+		OS -> OM : toDto(owner)
+		note right of OM
+		  Owner -> OwnerDto
+		  Pet -> PetDto (type aplanado a String)
+		  Solo lectura: no hay dirección inversa
+		end note
+		OM --> OS : OwnerDto
+		OS --> ORC : OwnerDto
+		ORC --> DS : ResponseEntity.ok(ownerDto)
+		DS --> CLIENT : 200 OK\napplication/json
+	else owner ausente
+		OR --> OS : Optional.empty()
+		OS -> OS : throw new OwnerNotFoundException(id)
+		OS --> ADVICE : OwnerNotFoundException
+		note right of ADVICE
+		  @RestControllerAdvice(
+		    assignableTypes = OwnerRestController.class)
+		  Acotado a este controller: no interfiere
+		  con el resto de la app MVC
+		end note
+		ADVICE -> ADVICE : ProblemDetail.forStatusAndDetail(\n  HttpStatus.NOT_FOUND, ex.getMessage())
+		ADVICE --> DS : ProblemDetail
+		DS --> CLIENT : 404 Not Found\napplication/problem+json
+	end
+end
+
+note over ORC, OS
+  GET /api/owners (listado paginado) sigue el mismo patrón:
+  ORC delega en OS.findByLastName(lastName, pageable),
+  que trata lastName == null como búsqueda amplia (prefijo ""),
+  igual que OwnerController#processFindForm en la UI Thymeleaf.
+  Ningún try/catch vive en el controller: todo error se traduce
+  vía OwnerRestExceptionHandler.
+end note
+
+@enduml

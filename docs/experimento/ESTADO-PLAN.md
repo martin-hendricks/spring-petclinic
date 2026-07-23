@@ -11,7 +11,7 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 | 1 | Replatform Java 17 → 21 | ✅ Completa | 2026-07-21 |
 | 2 | F-03 — Capa `@Service` (Pets & Visits) | ✅ Completa | 2026-07-21 |
 | 3 | F-05 — API REST Owners | ✅ Completa | 2026-07-21 |
-| 4 | Diagramas secuencia/clases to-be | ⬜ Pendiente | — |
+| 4 | Diagramas secuencia/clases to-be | ✅ Completa | 2026-07-22 |
 | 5 | Contenedores | ⬜ Pendiente | — |
 | 6 | Terraform sobre AWS | ⬜ Pendiente | — |
 | 7 | Estimación y esfuerzo real | ⬜ Pendiente (arranca en paralelo desde Fase 0) | — |
@@ -124,11 +124,28 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
 
 ## Fase 4 — Diagramas to-be
 
-- [ ] `08-secuencia-crear-pet-tobe.puml`
-- [ ] `09-secuencia-api-owners-tobe.puml`
-- [ ] `10-clases-capa-service-tobe.puml`
-- [ ] `11-despliegue-tobe.puml`
-- [ ] `docs/plantuml/README.md` actualizado + PNGs exportados
+- [x] `08-secuencia-crear-pet-tobe.puml` — `POST /owners/{ownerId}/pets/new` con `PetService`;
+      marca el bloque `@Transactional` (`group`), dónde se movieron las validaciones (antes en
+      `PetController` L110-117, ahora en `PetService`) y compara explícitamente contra el as-is
+      `07-secuencia-agregar-pet.puml` en una nota final.
+- [x] `09-secuencia-api-owners-tobe.puml` — `GET /api/owners/{id}` con `OwnerService` +
+      `OwnerMapper`; camino alterno 404 (`alt`) vía `OwnerNotFoundException` →
+      `OwnerRestExceptionHandler` → `ProblemDetail`.
+- [x] `10-clases-capa-service-tobe.puml` — `PetService`, `VisitService`, `OwnerService`,
+      `OwnerDto`/`PetDto`, `OwnerMapper`, ambos controllers (MVC y REST), `OwnerRepository`,
+      `ValidationException`/`FieldViolation`, `OwnerNotFoundException`; firmas de métodos y
+      estereotipos (`<<Service>>`, `<<RestController>>`, `<<DTO>>`, `<<Repository>>`) tomados
+      directamente del código de las Fases 2-3, no de un diseño idealizado.
+- [x] `11-despliegue-tobe.puml` — adapta `02-despliegue.puml`: nodo EC2 (t3.medium) con contenedor
+      Docker corriendo el JAR en Java 21, distinguiendo visualmente componentes legados
+      conservados (MVC, entidades, templates — color amarillo) de los nuevos (capa `@Service` y
+      API REST — color azul); RDS PostgreSQL en subred privada; ECR + CloudWatch. Anticipa las
+      Fases 5-6 (aún no implementadas) tal como pide el criterio de la Fase 4.
+- [x] `docs/plantuml/README.md` actualizado con la tabla "Iteración 2" (diagramas 08-11).
+- [ ] **PNGs sin exportar** — `plantuml`, `graphviz` (`dot`) y `docker` no están instalados en este
+      entorno de ejecución (verificado con `which`/`find`, sin resultados). Queda documentado en el
+      propio README de `docs/plantuml/` con el comando de exportación para cuando se disponga de
+      alguna de esas herramientas. **Desviación registrada** (ver #5 abajo).
 
 ## Fase 5 — Contenedores
 
@@ -174,3 +191,10 @@ Leyenda: ⬜ Pendiente · 🟨 En progreso · ✅ Completa · 🛑 Bloqueada / e
    blancos" del propio §0.2 del plan como la consistente: `PetController` quedó en 98 líneas por
    esa métrica (147 en crudo). Ambas cifras están documentadas en `baseline-metrics.md` y en la
    Fase 2 de este archivo para que se pueda auditar la decisión.
+5. **PNGs de los diagramas 08-11 no exportados en esta sesión.** El entorno de ejecución no tiene
+   `plantuml`, `graphviz` ni `docker` instalados (comprobado con `which`/`find`, sin resultados).
+   Los cuatro `.puml` de la Fase 4 sí se crearon completos y documentados en
+   `docs/plantuml/README.md`, junto con el comando exacto para exportarlos apenas se cuente con
+   alguna de esas herramientas (localmente o vía la extensión PlantUML de VS Code/Cursor). No
+   bloquea el resto del experimento porque el contenido de los diagramas es lo que aporta valor
+   para la rúbrica; el PNG es solo un formato de salida.

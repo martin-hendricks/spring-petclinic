@@ -1,0 +1,126 @@
+@startuml 10-clases-capa-service-tobe
+title Spring PetClinic — Capa @Service to-be (F-03 + F-05)
+skinparam shadowing false
+skinparam classAttributeIconSize 0
+
+class PetController <<Controller>> {
+	-OwnerRepository owners
+	-PetTypeRepository types
+	-PetService petService
+	+processCreationForm(owner, pet, result, redirectAttributes): String
+	+processUpdateForm(owner, pet, result, redirectAttributes): String
+	-findOwnerOrThrow(ownerId: int): Owner
+	-validateAndSave(owner, pet, result, redirectAttributes, persistAction, successMessage): String
+}
+
+class VisitController <<Controller>> {
+	-OwnerRepository owners
+	-VisitService visitService
+	+processNewVisitForm(owner, petId, visit, result, redirectAttributes): String
+}
+
+class OwnerRestController <<RestController>> {
+	-OwnerService ownerService
+	+findAll(lastName, page, size): ResponseEntity<Page<OwnerDto>>
+	+findById(id: int): ResponseEntity<OwnerDto>
+}
+
+class OwnerRestExceptionHandler <<RestControllerAdvice>> {
+	+handleOwnerNotFound(ex: OwnerNotFoundException): ProblemDetail
+}
+
+class PetService <<Service>> {
+	-OwnerRepository owners
+	+createPet(owner: Owner, pet: Pet): Pet
+	+updatePet(owner: Owner, pet: Pet): Pet
+	+validateDuplicateName(owner, pet, violations: List<FieldViolation>): void
+	+validateBirthDate(pet, violations: List<FieldViolation>): void
+	-updatePetDetails(owner: Owner, pet: Pet): void
+}
+
+class VisitService <<Service>> {
+	-OwnerRepository owners
+	+createVisit(owner: Owner, petId: int, visit: Visit): Visit
+	+validateVisitDate(visit, violations: List<FieldViolation>): void
+}
+
+class OwnerService <<Service>> {
+	-OwnerRepository owners
+	+findById(id: int): OwnerDto
+	+findByLastName(lastName: String, pageable: Pageable): Page<OwnerDto>
+}
+
+class OwnerMapper <<utility>> {
+	{static} +toDto(owner: Owner): OwnerDto
+	{static} +toDto(pet: Pet): PetDto
+}
+
+record OwnerDto <<DTO>> {
+	+id: Integer
+	+firstName: String
+	+lastName: String
+	+address: String
+	+city: String
+	+telephone: String
+	+pets: List<PetDto>
+}
+
+record PetDto <<DTO>> {
+	+id: Integer
+	+name: String
+	+birthDate: LocalDate
+	+type: String
+}
+
+class ValidationException <<domain exception>> {
+	+violations: List<FieldViolation>
+}
+
+record FieldViolation <<DTO>> {
+	+field: String
+	+code: String
+	+defaultMessage: String
+}
+
+class OwnerNotFoundException <<domain exception>>
+
+interface OwnerRepository <<Repository>> {
+	+findById(id: int): Optional<Owner>
+	+findByLastNameStartingWith(lastName, pageable): Page<Owner>
+	+save(owner: Owner): void
+}
+
+PetController -down-> PetService : usa
+VisitController -down-> VisitService : usa
+OwnerRestController -down-> OwnerService : usa
+OwnerRestController .down.> OwnerRestExceptionHandler : errores manejados por
+
+PetService -down-> OwnerRepository
+VisitService -down-> OwnerRepository
+OwnerService -down-> OwnerRepository
+
+PetService ..> ValidationException : lanza
+VisitService ..> ValidationException : lanza
+ValidationException *-- FieldViolation
+PetController ..> FieldViolation : traduce a\nresult.rejectValue(...)
+
+OwnerService ..> OwnerMapper : usa
+OwnerService ..> OwnerNotFoundException : lanza
+OwnerMapper ..> OwnerDto : produce
+OwnerMapper ..> PetDto : produce
+OwnerDto *-- PetDto
+
+note bottom of PetService
+  Sin dependencia de BindingResult:
+  expone violaciones como datos
+  (FieldViolation), no como excepciones
+  ligadas a Spring MVC.
+end note
+
+note bottom of OwnerMapper
+  Solo lectura (Owner -> DTO).
+  F-05 es un endpoint GET; no hay
+  mapeo inverso DTO -> entidad.
+end note
+
+@enduml
