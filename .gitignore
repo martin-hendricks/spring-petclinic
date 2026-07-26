@@ -66,3 +66,5 @@ tfplan*
 ### Experimento — artefactos generados, no fuente de verdad ###
 docs/plantuml/export/
 docs/experimento/metricas-commits.csv
+docs/experimento/scripts/k6-summary.json
+docs/experimento/scripts/k6-results/
